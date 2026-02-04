@@ -1,0 +1,54 @@
+general:
+  instance_name: "Deep Search"
+
+search:
+  safe_search: 0
+  default_lang: "en"
+  autocomplete: ""
+
+server:
+  secret_key: "change-this-in-production"
+  limiter: false
+  image_proxy: true
+
+ui:
+  static_use_hash: true
+  default_locale: "en"
+  query_in_title: false
+
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 30.0
+  useragent_suffix: "DeepSearch"
+
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    disabled: false
+
+  - name: bing
+    engine: bing
+    shortcut: b
+    disabled: false
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+
+  - name: arxiv
+    engine: arxiv
+    shortcut: arx
+    disabled: false
+    categories: science
+
+  - name: github
+    engine: github
+    shortcut: gh
+    disabled: false

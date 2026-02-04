@@ -1,0 +1,27 @@
+{
+  "name": "deep-search",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A modular, self-contained LLM application for deep research",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:backend": "npm run dev --workspace=@deep-search/backend",
+    "dev:frontend": "npm run dev --workspace=@deep-search/frontend",
+    "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build --workspace=@deep-search/shared",
+    "build:backend": "npm run build --workspace=@deep-search/backend",
+    "build:frontend": "npm run build --workspace=@deep-search/frontend",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "rm -rf node_modules packages/*/node_modules apps/*/node_modules packages/*/dist apps/*/dist",
+    "db:migrate": "npm run db:migrate --workspace=@deep-search/backend",
+    "db:push": "npm run db:push --workspace=@deep-search/backend"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}

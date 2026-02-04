@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:./data/deep-search.db
+      - LLM_PROVIDER=openai-compat
+      - LLM_BASE_URL=http://host.docker.internal:11434/v1
+      - LLM_MODEL=llama3.2
+      - SEARCH_PROVIDER=scraper
+      - NODE_ENV=production
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+# To use with SearXNG, uncomment below:
+#
+#  searxng:
+#    image: searxng/searxng
+#    ports:
+#      - "8080:8080"
+#    volumes:
+#      - ./searxng:/etc/searxng
+#    restart: unless-stopped
+#
+# And update app environment:
+#    environment:
+#      - SEARCH_PROVIDER=searxng
+#      - SEARXNG_URL=http://searxng:8080
