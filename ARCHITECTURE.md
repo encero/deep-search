@@ -272,43 +272,146 @@ abstract class BaseAgent {
 
 ## Agent System Design
 
-### Research Flow
+### Research Loop (Iterative with User Feedback)
+
+The research process runs in a **continuous loop** until the Orchestrator decides to exit or the user intervenes. Users can provide feedback at any point to guide the research direction.
 
 ```
-1. User enters research topic
-                │
-                ▼
-2. Orchestrator Agent receives topic
-   ├── Analyzes topic complexity
-   ├── Creates research plan with subtopics
-   └── Determines number of researcher agents needed
-                │
-                ▼
-3. Orchestrator spawns Researcher Agents
-   └── Each agent assigned specific subtopics/angles
-                │
-                ▼
-4. Researcher Agents work in parallel
-   ├── Execute web searches
-   ├── Analyze results with LLM
-   ├── Extract key findings
-   └── Report findings to Orchestrator
-                │
-                ▼
-5. Orchestrator evaluates findings
-   ├── Determines if clarification needed → asks agent to clarify
-   ├── Determines if more research needed → asks agent to expand
-   └── Collects sufficient findings → triggers synthesis
-                │
-                ▼
-6. Synthesizer Agent
-   ├── Aggregates all findings
-   ├── Identifies key themes and conflicts
-   ├── Generates comprehensive summary
-   └── Creates structured report with citations
-                │
-                ▼
-7. Results displayed to user with real-time updates throughout
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           RESEARCH LOOP                                      │
+│                                                                              │
+│   ┌─────────────┐                                                           │
+│   │ User Input  │ ─── Topic + Config + Optional Custom Prompts              │
+│   └──────┬──────┘                                                           │
+│          │                                                                   │
+│          ▼                                                                   │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                    ORCHESTRATOR AGENT                                │   │
+│   │  ┌───────────────────────────────────────────────────────────────┐  │   │
+│   │  │ 1. Plan Research (initial or revised based on feedback)       │  │   │
+│   │  │ 2. Spawn/reassign Researcher Agents                           │  │   │
+│   │  │ 3. Monitor progress and collect findings                      │  │   │
+│   │  │ 4. Store findings in Knowledge Storage                        │  │   │
+│   │  │ 5. Evaluate: Is research sufficient?                          │  │   │
+│   │  │    ├─ NO  → Request clarification/expansion from agents       │  │   │
+│   │  │    ├─ NO  → Spawn new agents for unexplored areas             │  │   │
+│   │  │    └─ YES → Trigger synthesis and present to user             │  │   │
+│   │  └───────────────────────────────────────────────────────────────┘  │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│          │                              ▲                                    │
+│          │                              │                                    │
+│          ▼                              │ User Feedback (optional)           │
+│   ┌─────────────┐                       │  • "Go deeper on X"               │
+│   │  Synthesis  │ ──────────────────────┤  • "Ignore Y"                     │
+│   │  Presented  │                       │  • "Also look at Z"               │
+│   └──────┬──────┘                       │  • "This is good, finish"         │
+│          │                              │                                    │
+│          ▼                              │                                    │
+│   ┌─────────────────────┐               │                                    │
+│   │ Orchestrator        │───────────────┘                                    │
+│   │ Decision Point      │                                                    │
+│   │                     │                                                    │
+│   │ • Continue loop?    │──── YES ────→ Loop continues                      │
+│   │ • Exit criteria met?│                                                    │
+│   │ • User said stop?   │──── NO  ────→ Final synthesis + Exit              │
+│   └─────────────────────┘                                                    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Loop Exit Conditions
+
+The Orchestrator decides to exit the loop when:
+
+1. **Saturation**: No new significant findings in last N iterations
+2. **Coverage**: All planned subtopics adequately researched
+3. **Confidence**: Synthesis confidence score exceeds threshold
+4. **User Signal**: User explicitly requests completion
+5. **Resource Limits**: Max iterations or time limit reached
+
+```typescript
+interface LoopExitCriteria {
+  maxIterations: number;              // Hard limit (default: 10)
+  maxDurationMinutes: number;         // Time limit (default: 30)
+  minConfidenceScore: number;         // 0-1, synthesis confidence (default: 0.7)
+  saturationThreshold: number;        // New findings % that triggers exit (default: 0.1)
+  requiredSubtopicCoverage: number;   // % of subtopics covered (default: 0.8)
+}
+```
+
+### Detailed Research Flow
+
+```
+1. INITIALIZATION
+   │
+   ├── User enters topic
+   ├── User optionally configures:
+   │   • Research depth (shallow/medium/deep)
+   │   • Custom system prompts for agents
+   │   • Focus areas to prioritize
+   │   • Areas to exclude
+   │   • Exit criteria overrides
+   │
+   ▼
+2. PLANNING PHASE
+   │
+   ├── Orchestrator analyzes topic
+   ├── Generates research plan with subtopics
+   ├── Determines agent allocation
+   ├── Initializes Knowledge Storage
+   │
+   ▼
+3. RESEARCH LOOP ←──────────────────────────────────┐
+   │                                                 │
+   ├── Orchestrator spawns/assigns Researcher Agents │
+   │                                                 │
+   ├── Researchers work in parallel:                 │
+   │   ├── Execute web searches                      │
+   │   ├── Scrape and analyze content                │
+   │   ├── Extract findings with confidence scores   │
+   │   ├── Store in per-agent Knowledge Storage      │
+   │   └── Report to Orchestrator                    │
+   │                                                 │
+   ├── Orchestrator evaluates findings:              │
+   │   ├── Merge into Combined Knowledge Storage     │
+   │   ├── Identify gaps and contradictions          │
+   │   ├── Request clarifications if needed          │
+   │   └── Plan next research directions             │
+   │                                                 │
+   ├── Synthesis (incremental):                      │
+   │   ├── Generate current state summary            │
+   │   ├── Update key findings list                  │
+   │   └── Present to user with progress             │
+   │                                                 │
+   ├── User Feedback Window:                         │
+   │   ├── User reviews current synthesis            │
+   │   ├── User can provide guidance                 │
+   │   ├── User can approve and continue             │
+   │   └── User can request completion               │
+   │                                                 │
+   ├── Orchestrator Decision:                        │
+   │   ├── Check exit criteria                       │
+   │   ├── Process user feedback                     │
+   │   └── Continue or Exit?                         │
+   │       │                                         │
+   │       ├── CONTINUE ─────────────────────────────┘
+   │       │
+   │       └── EXIT ─────────┐
+   │                         │
+   ▼                         │
+4. FINAL SYNTHESIS           │
+   │◄────────────────────────┘
+   ├── Comprehensive summary generation
+   ├── Structured report with all sections
+   ├── Source compilation and verification
+   ├── Confidence assessment
+   │
+   ▼
+5. COMPLETION
+   │
+   ├── Final report presented
+   ├── Export options available
+   └── Session saved to history
 ```
 
 ### Message Types
@@ -331,8 +434,307 @@ enum MessageType {
 
   // Synthesizer → Orchestrator
   SYNTHESIS_COMPLETE = 'synthesis_complete',
+
+  // User Feedback (via Orchestrator)
+  USER_FEEDBACK = 'user_feedback',
+  USER_STOP_REQUEST = 'user_stop_request',
 }
 ```
+
+---
+
+## Knowledge Storage
+
+Two-tier knowledge storage system: per-agent working memory and combined research knowledge base.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         KNOWLEDGE STORAGE SYSTEM                             │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    COMBINED KNOWLEDGE BASE                           │    │
+│  │                    (Orchestrator Managed)                            │    │
+│  │                                                                      │    │
+│  │  • Merged findings from all agents                                   │    │
+│  │  • Deduplicated and conflict-resolved                                │    │
+│  │  • Categorized by subtopic                                           │    │
+│  │  • Confidence-weighted                                               │    │
+│  │  • Source-attributed                                                 │    │
+│  │  • Versioned (tracks changes across iterations)                      │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                              ▲                                               │
+│                              │ Merge & Reconcile                            │
+│          ┌───────────────────┼───────────────────┐                          │
+│          │                   │                   │                          │
+│  ┌───────┴───────┐   ┌───────┴───────┐   ┌───────┴───────┐                 │
+│  │ Agent 1       │   │ Agent 2       │   │ Agent N       │                 │
+│  │ Knowledge     │   │ Knowledge     │   │ Knowledge     │                 │
+│  │               │   │               │   │               │                 │
+│  │ • Findings    │   │ • Findings    │   │ • Findings    │                 │
+│  │ • Sources     │   │ • Sources     │   │ • Sources     │                 │
+│  │ • Search log  │   │ • Search log  │   │ • Search log  │                 │
+│  │ • Reasoning   │   │ • Reasoning   │   │ • Reasoning   │                 │
+│  └───────────────┘   └───────────────┘   └───────────────┘                 │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Knowledge Entry Structure
+
+```typescript
+interface KnowledgeEntry {
+  id: string;
+  sessionId: string;
+
+  // Content
+  content: string;                    // The actual finding/fact
+  summary: string;                    // One-line summary
+  category: string;                   // Subtopic category
+  tags: string[];                     // Searchable tags
+
+  // Provenance
+  sourceAgentId: string;
+  sources: SourceReference[];
+  extractedAt: Date;
+
+  // Quality metrics
+  confidence: number;                 // 0-1 agent confidence
+  relevance: number;                  // 0-1 relevance to main topic
+  novelty: number;                    // 0-1 how new vs existing knowledge
+
+  // Relationships
+  relatedEntries: string[];           // Links to related findings
+  contradicts: string[];              // Links to contradicting findings
+  supports: string[];                 // Links to supporting findings
+
+  // Versioning
+  version: number;
+  previousVersionId?: string;
+  mergedFrom?: string[];              // If created by merging entries
+}
+
+interface SourceReference {
+  url: string;
+  title: string;
+  excerpt: string;                    // Relevant quote
+  accessedAt: Date;
+  reliability: number;                // 0-1 source reliability estimate
+}
+
+interface AgentKnowledge {
+  agentId: string;
+  sessionId: string;
+  assignedSubtopic: string;
+
+  entries: KnowledgeEntry[];
+  searchHistory: SearchLogEntry[];
+  reasoningLog: ReasoningStep[];
+
+  stats: {
+    totalSearches: number;
+    totalSources: number;
+    totalFindings: number;
+    avgConfidence: number;
+  };
+}
+
+interface CombinedKnowledge {
+  sessionId: string;
+  iteration: number;
+
+  entries: KnowledgeEntry[];          // Merged and deduplicated
+
+  // Synthesis helpers
+  keyThemes: Theme[];
+  contradictions: Contradiction[];
+  gaps: KnowledgeGap[];
+
+  // Metrics
+  overallConfidence: number;
+  coverageBySubtopic: Map<string, number>;
+
+  updatedAt: Date;
+}
+
+interface Theme {
+  id: string;
+  title: string;
+  description: string;
+  supportingEntries: string[];
+  strength: number;                   // How well-supported
+}
+
+interface Contradiction {
+  id: string;
+  description: string;
+  entries: string[];                  // Conflicting entry IDs
+  resolved: boolean;
+  resolution?: string;
+}
+
+interface KnowledgeGap {
+  id: string;
+  subtopic: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  suggestedQueries: string[];
+}
+```
+
+### Knowledge Operations
+
+```typescript
+interface KnowledgeStore {
+  // Agent operations
+  addEntry(agentId: string, entry: KnowledgeEntry): Promise<void>;
+  getAgentKnowledge(agentId: string): Promise<AgentKnowledge>;
+
+  // Combined operations
+  mergeAgentKnowledge(agentIds: string[]): Promise<CombinedKnowledge>;
+  getCombinedKnowledge(sessionId: string): Promise<CombinedKnowledge>;
+
+  // Query operations
+  search(query: string, filters?: KnowledgeFilters): Promise<KnowledgeEntry[]>;
+  findRelated(entryId: string): Promise<KnowledgeEntry[]>;
+  findContradictions(): Promise<Contradiction[]>;
+  identifyGaps(plan: ResearchPlan): Promise<KnowledgeGap[]>;
+
+  // Analysis
+  calculateCoverage(plan: ResearchPlan): Promise<Map<string, number>>;
+  assessNovelty(newEntry: KnowledgeEntry): Promise<number>;
+}
+```
+
+---
+
+## Custom Agent Prompts
+
+Users can customize the behavior of each agent type through system prompts. Default prompts are provided but can be overridden per-session.
+
+### Prompt Configuration
+
+```typescript
+interface AgentPromptConfig {
+  // Override default system prompts
+  orchestratorPrompt?: string;
+  researcherPrompt?: string;
+  synthesizerPrompt?: string;
+
+  // Additional instructions appended to defaults
+  orchestratorInstructions?: string;
+  researcherInstructions?: string;
+  synthesizerInstructions?: string;
+
+  // Research focus/style
+  researchStyle?: 'academic' | 'journalistic' | 'technical' | 'general';
+  outputTone?: 'formal' | 'casual' | 'technical';
+
+  // Domain-specific context
+  domainContext?: string;            // e.g., "This research is for a medical professional"
+  priorKnowledge?: string;           // What user already knows
+
+  // Constraints
+  avoidTopics?: string[];
+  requiredSources?: string[];        // Domains to prioritize
+  excludedSources?: string[];        // Domains to avoid
+}
+```
+
+### Default Prompt Templates
+
+```typescript
+const DEFAULT_PROMPTS = {
+  orchestrator: `
+You are a Research Orchestrator managing a deep research session.
+
+Your responsibilities:
+1. Analyze the research topic and create a comprehensive plan
+2. Break down the topic into subtopics for parallel research
+3. Assign tasks to researcher agents
+4. Evaluate incoming findings for quality and relevance
+5. Identify gaps, contradictions, and areas needing clarification
+6. Decide when research is sufficient to synthesize
+7. Coordinate the final synthesis
+
+Decision guidelines:
+- Request clarification when findings are ambiguous
+- Expand research when coverage is insufficient
+- Stop when confidence threshold is met or saturation is reached
+- Always consider user feedback in your decisions
+
+Current session context:
+{sessionContext}
+
+User's custom instructions:
+{customInstructions}
+`,
+
+  researcher: `
+You are a Research Agent conducting focused investigation on a specific subtopic.
+
+Your responsibilities:
+1. Execute targeted web searches based on your assigned queries
+2. Analyze search results and extract relevant information
+3. Assess source credibility and assign confidence scores
+4. Identify key findings and supporting evidence
+5. Note contradictions or gaps in available information
+6. Suggest follow-up queries for deeper investigation
+
+Research guidelines:
+- Prioritize authoritative and recent sources
+- Cross-reference claims across multiple sources
+- Clearly distinguish facts from opinions
+- Note uncertainty when information is conflicting
+
+Your assigned subtopic: {subtopic}
+Search queries to execute: {searchQueries}
+
+User's custom instructions:
+{customInstructions}
+`,
+
+  synthesizer: `
+You are a Research Synthesizer creating comprehensive summaries from collected findings.
+
+Your responsibilities:
+1. Aggregate findings from all research agents
+2. Identify overarching themes and patterns
+3. Resolve or highlight contradictions
+4. Create a coherent narrative from disparate sources
+5. Ensure all claims are properly attributed
+6. Generate structured output with clear sections
+
+Synthesis guidelines:
+- Lead with the most important findings
+- Group related information logically
+- Maintain source attribution throughout
+- Indicate confidence levels for conclusions
+- Highlight areas of uncertainty or debate
+
+Output style: {outputStyle}
+
+User's custom instructions:
+{customInstructions}
+`
+};
+```
+
+### Prompt Variables
+
+Available variables that get injected into prompts:
+
+| Variable | Description |
+|----------|-------------|
+| `{sessionContext}` | Current session state, topic, iteration count |
+| `{customInstructions}` | User-provided additional instructions |
+| `{subtopic}` | Assigned subtopic for researcher |
+| `{searchQueries}` | List of queries to execute |
+| `{outputStyle}` | User's preferred output format |
+| `{knowledgeSummary}` | Summary of current knowledge base |
+| `{previousFindings}` | Findings from previous iterations |
+| `{userFeedback}` | Latest user feedback if any |
 
 ---
 
@@ -344,18 +746,49 @@ enum MessageType {
 interface ResearchSession {
   id: string;
   topic: string;
-  status: 'planning' | 'researching' | 'synthesizing' | 'completed' | 'error';
-  config: {
-    maxAgents: number;
-    maxSearchesPerAgent: number;
-    depthLevel: 'shallow' | 'medium' | 'deep';
-  };
+  status: 'planning' | 'researching' | 'awaiting_feedback' | 'synthesizing' | 'completed' | 'error';
+
+  // Configuration
+  config: ResearchConfig;
+  promptConfig: AgentPromptConfig;
+  exitCriteria: LoopExitCriteria;
+
+  // State
+  currentIteration: number;
   plan?: ResearchPlan;
   agents: AgentState[];
-  findings: Finding[];
-  synthesis?: Synthesis;
+
+  // Knowledge
+  combinedKnowledge?: CombinedKnowledge;
+
+  // Outputs
+  syntheses: Synthesis[];             // One per iteration
+  finalSynthesis?: Synthesis;
+
+  // User interaction
+  feedbackHistory: UserFeedback[];
+
+  // Timing
   createdAt: Date;
+  updatedAt: Date;
   completedAt?: Date;
+}
+
+interface ResearchConfig {
+  maxAgents: number;
+  maxSearchesPerAgent: number;
+  depthLevel: 'shallow' | 'medium' | 'deep';
+  focusAreas?: string[];
+  excludeTopics?: string[];
+}
+
+interface UserFeedback {
+  id: string;
+  iteration: number;
+  timestamp: Date;
+  type: 'guidance' | 'approval' | 'stop' | 'redirect';
+  content: string;
+  processed: boolean;
 }
 ```
 
@@ -416,35 +849,391 @@ interface Synthesis {
 
 ---
 
+## UX Flow
+
+### Complete User Journey
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER JOURNEY                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. LANDING / HOME
+   │
+   │  User sees:
+   │  • New research button
+   │  • Recent sessions list
+   │  • Settings access
+   │
+   └──→ Click "New Research"
+           │
+           ▼
+2. RESEARCH SETUP
+   │
+   │  User configures:
+   │  ┌─────────────────────────────────────────────────────────────┐
+   │  │ [Required]                                                  │
+   │  │ • Topic input (text field)                                  │
+   │  │                                                             │
+   │  │ [Optional - Expandable "Advanced Settings"]                 │
+   │  │ • Depth: Shallow / Medium / Deep (radio)                    │
+   │  │ • Focus areas (tag input)                                   │
+   │  │ • Exclude topics (tag input)                                │
+   │  │ • Max iterations (slider, 1-20)                             │
+   │  │ • Custom agent prompts (collapsible text areas)             │
+   │  │   - Orchestrator instructions                               │
+   │  │   - Researcher instructions                                 │
+   │  │   - Synthesizer instructions                                │
+   │  └─────────────────────────────────────────────────────────────┘
+   │
+   └──→ Click "Start Research"
+           │
+           ▼
+3. RESEARCH IN PROGRESS (Main Loop)
+   │
+   │  ┌─────────────────────────────────────────────────────────────┐
+   │  │                    RESEARCH VIEW                            │
+   │  │                                                             │
+   │  │  ┌─────────────────┬───────────────────────────────────┐   │
+   │  │  │  LEFT PANEL     │  MAIN CONTENT                     │   │
+   │  │  │                 │                                    │   │
+   │  │  │  Agent Status   │  Current Synthesis                │   │
+   │  │  │  ┌───────────┐  │  (updates live)                   │   │
+   │  │  │  │ Agent 1   │  │                                    │   │
+   │  │  │  │ ████░░ 60%│  │  Key Findings So Far:             │   │
+   │  │  │  ├───────────┤  │  • Finding 1...                   │   │
+   │  │  │  │ Agent 2   │  │  • Finding 2...                   │   │
+   │  │  │  │ ██████ 90%│  │                                    │   │
+   │  │  │  ├───────────┤  │  ─────────────────────────────    │   │
+   │  │  │  │ Agent 3   │  │                                    │   │
+   │  │  │  │ ██░░░░ 30%│  │  Detailed Sections:               │   │
+   │  │  │  └───────────┘  │  [Expandable sections...]         │   │
+   │  │  │                 │                                    │   │
+   │  │  │  Iteration: 2/10│                                    │   │
+   │  │  │                 │                                    │   │
+   │  │  │  [View Details] │                                    │   │
+   │  │  └─────────────────┴───────────────────────────────────┘   │
+   │  │                                                             │
+   │  │  ┌─────────────────────────────────────────────────────┐   │
+   │  │  │  FEEDBACK BAR                                       │   │
+   │  │  │  ┌───────────────────────────────────────────────┐  │   │
+   │  │  │  │ [Text input: "Go deeper on...", "Ignore..."] │  │   │
+   │  │  │  └───────────────────────────────────────────────┘  │   │
+   │  │  │  [Send Feedback]  [Looks Good, Continue]  [Finish] │   │
+   │  │  └─────────────────────────────────────────────────────┘   │
+   │  └─────────────────────────────────────────────────────────────┘
+   │
+   │  Loop behaviors:
+   │  • Synthesis updates after each agent reports
+   │  • User can send feedback anytime (non-blocking)
+   │  • "Finish" triggers final synthesis
+   │  • Auto-proceeds if no feedback within timeout
+   │
+   └──→ Research completes (auto or manual)
+           │
+           ▼
+4. RESULTS VIEW
+   │
+   │  ┌─────────────────────────────────────────────────────────────┐
+   │  │                    FINAL RESULTS                            │
+   │  │                                                             │
+   │  │  Topic: "Your Research Topic"                              │
+   │  │  Completed: 2024-01-15 14:30 | Iterations: 5 | Sources: 47 │
+   │  │                                                             │
+   │  │  ┌─────────────────────────────────────────────────────┐   │
+   │  │  │  EXECUTIVE SUMMARY                                  │   │
+   │  │  │  [Collapsible full summary text...]                 │   │
+   │  │  └─────────────────────────────────────────────────────┘   │
+   │  │                                                             │
+   │  │  ┌─────────────────────────────────────────────────────┐   │
+   │  │  │  KEY FINDINGS                                       │   │
+   │  │  │  ⭐ High: Finding title [2 sources]                 │   │
+   │  │  │  ⭐ High: Finding title [3 sources]                 │   │
+   │  │  │  ◆ Medium: Finding title [1 source]                 │   │
+   │  │  └─────────────────────────────────────────────────────┘   │
+   │  │                                                             │
+   │  │  ┌─────────────────────────────────────────────────────┐   │
+   │  │  │  DETAILED SECTIONS (tabs or accordion)              │   │
+   │  │  │  [Section 1] [Section 2] [Section 3] ...            │   │
+   │  │  └─────────────────────────────────────────────────────┘   │
+   │  │                                                             │
+   │  │  ┌─────────────────────────────────────────────────────┐   │
+   │  │  │  SOURCES                                            │   │
+   │  │  │  • source1.com - "Title" (cited 5x)                 │   │
+   │  │  │  • source2.org - "Title" (cited 3x)                 │   │
+   │  │  └─────────────────────────────────────────────────────┘   │
+   │  │                                                             │
+   │  │  [Export: Markdown] [Export: PDF] [Continue Research]      │
+   │  └─────────────────────────────────────────────────────────────┘
+   │
+   └──→ User can:
+        • Export results
+        • Continue research (returns to loop)
+        • Start new research
+        • Go to history
+```
+
+### Interaction Patterns
+
+| Action | Trigger | System Response |
+|--------|---------|-----------------|
+| Start Research | Click "Start" | Create session, show research view |
+| Send Feedback | Type + click "Send" | Queue feedback, continue research |
+| Quick Approve | Click "Looks Good" | Log approval, continue to next iteration |
+| Finish Early | Click "Finish" | Trigger final synthesis immediately |
+| Expand Agent | Click agent card | Show agent's findings, search history |
+| View Source | Click source link | Open in new tab |
+| Export | Click export button | Generate and download file |
+| Continue Research | Click from results | Resume loop with existing knowledge |
+
+### Feedback Types and Effects
+
+| Feedback Type | Example | Orchestrator Action |
+|--------------|---------|---------------------|
+| Redirect | "Focus more on X" | Reprioritize subtopics, spawn new agent for X |
+| Expand | "Go deeper on Y" | Assign expansion task to agent |
+| Exclude | "Ignore Z" | Mark Z as excluded, filter from synthesis |
+| Clarify | "What about W?" | Add W as new subtopic |
+| Approve | "This looks good" | Continue with current direction |
+| Complete | "This is enough" | Exit loop, final synthesis |
+
+---
+
+## UI Description
+
+### Layout Overview
+
+Single-page application with responsive design. Three main views:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  HEADER                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ [Logo] Deep Search          [History] [Settings] [Theme Toggle]         ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  MAIN CONTENT AREA                                                          │
+│  (changes based on current view)                                            │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### View Components
+
+#### 1. Home View
+- **New Research Card**: Prominent CTA, topic input with "Start" button
+- **Recent Sessions**: List of last 5-10 sessions with status badges
+- **Quick Stats**: Total sessions, average research time, etc.
+
+#### 2. Research Setup View
+- **Topic Input**: Large text field with placeholder examples
+- **Advanced Settings**: Collapsible panel with:
+  - Depth selector (3 radio buttons with descriptions)
+  - Focus areas (tag input with autocomplete)
+  - Exclusions (tag input)
+  - Iteration limit (slider)
+- **Custom Prompts**: Collapsible section with three text areas
+- **Action Buttons**: "Start Research", "Cancel"
+
+#### 3. Research View (Active Session)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Topic: "Understanding quantum computing applications"        Iteration 3/10 │
+├────────────────────┬────────────────────────────────────────────────────────┤
+│                    │                                                        │
+│  AGENT PANEL       │  SYNTHESIS PANEL                                      │
+│  (240px width)     │  (flexible)                                           │
+│                    │                                                        │
+│  ┌──────────────┐  │  ┌──────────────────────────────────────────────────┐ │
+│  │ Orchestrator │  │  │ Current Understanding                            │ │
+│  │ Planning...  │  │  │                                                  │ │
+│  └──────────────┘  │  │ [Live-updating markdown content with            │ │
+│                    │  │  key findings, sections, and source             │ │
+│  ┌──────────────┐  │  │  citations. Streaming text appearance.]         │ │
+│  │ Researcher 1 │  │  │                                                  │ │
+│  │ ████████░░   │  │  │                                                  │ │
+│  │ Searching... │  │  │                                                  │ │
+│  └──────────────┘  │  │                                                  │ │
+│                    │  │                                                  │ │
+│  ┌──────────────┐  │  │                                                  │ │
+│  │ Researcher 2 │  │  │                                                  │ │
+│  │ ██████████   │  │  │                                                  │ │
+│  │ Complete ✓   │  │  └──────────────────────────────────────────────────┘ │
+│  └──────────────┘  │                                                        │
+│                    │  ┌──────────────────────────────────────────────────┐ │
+│  ┌──────────────┐  │  │ Knowledge Progress                               │ │
+│  │ Researcher 3 │  │  │ ████████████████░░░░░░░░ 67% coverage           │ │
+│  │ ████░░░░░░   │  │  │ 23 findings | 12 sources | 2 gaps identified    │ │
+│  │ Analyzing... │  │  └──────────────────────────────────────────────────┘ │
+│  └──────────────┘  │                                                        │
+│                    │                                                        │
+├────────────────────┴────────────────────────────────────────────────────────┤
+│  FEEDBACK BAR                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ [Feedback input...                                          ] [Send]  │ │
+│  │                                                                        │ │
+│  │ [👍 Continue]    [🎯 Go Deeper]    [✅ Finish Now]                     │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Agent Panel Components:**
+- Agent cards with role icon, status, progress bar
+- Click to expand showing: current task, recent findings, search history
+- Color-coded status: blue (working), green (complete), yellow (waiting), red (error)
+
+**Synthesis Panel Components:**
+- Markdown rendered content with source citations as superscript links
+- Collapsible sections for detailed findings
+- "Scroll to latest" button when auto-scrolling is paused
+
+**Feedback Bar Components:**
+- Text input for free-form guidance
+- Quick action buttons with icons
+- Subtle feedback history indicator (click to see past feedback)
+
+#### 4. Results View
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Research Complete                                              [Export ▼]  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Topic: "Understanding quantum computing applications"                       │
+│  Completed: Jan 15, 2024 at 2:30 PM | 5 iterations | 47 sources             │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ SUMMARY                                                                 ││
+│  │                                                                         ││
+│  │ [Executive summary paragraph with key takeaways...]                     ││
+│  │                                                                         ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ KEY FINDINGS                                                            ││
+│  │                                                                         ││
+│  │ ⭐ High Impact                                                          ││
+│  │    • Finding 1 with source citation [1][2]                              ││
+│  │    • Finding 2 with source citation [3]                                 ││
+│  │                                                                         ││
+│  │ ◆ Notable                                                               ││
+│  │    • Finding 3 with source citation [4]                                 ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ [Section 1] [Section 2] [Section 3] [Sources]                          ││
+│  ├─────────────────────────────────────────────────────────────────────────┤│
+│  │                                                                         ││
+│  │ Section content with proper formatting, citations, and                  ││
+│  │ expandable details...                                                   ││
+│  │                                                                         ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  [Continue Research]  [New Research]                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5. History View
+
+- Session list with search/filter
+- Each item shows: topic, date, status, iteration count
+- Click to open results view
+- Bulk actions: delete, export
+
+#### 6. Settings View
+
+- **LLM Configuration**: Provider, URL, model, API key
+- **Search Configuration**: Provider selection, SearXNG URL
+- **Default Research Settings**: Default depth, max iterations
+- **Default Prompts**: Edit default prompts for all agents
+- **Theme**: Light/Dark mode toggle
+
+### Component Library (shadcn/ui)
+
+Required components:
+- `Button`, `Input`, `Textarea` - Forms
+- `Card`, `CardHeader`, `CardContent` - Layout
+- `Progress` - Agent progress bars
+- `Badge` - Status indicators
+- `Tabs`, `TabsList`, `TabsContent` - Section navigation
+- `Collapsible` - Expandable sections
+- `Dialog` - Modals for settings, confirmations
+- `Tooltip` - Help text
+- `Skeleton` - Loading states
+- `Toast` - Notifications
+
+### Responsive Behavior
+
+| Breakpoint | Layout Change |
+|------------|---------------|
+| Desktop (>1024px) | Two-column layout, full agent panel |
+| Tablet (768-1024px) | Collapsible agent panel, full synthesis |
+| Mobile (<768px) | Stacked layout, bottom sheet for agents |
+
+---
+
 ## API Endpoints
 
 ### REST API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| **Sessions** |
 | POST | `/api/research/sessions` | Start new research session |
 | GET | `/api/research/sessions` | List all sessions |
 | GET | `/api/research/sessions/:id` | Get session details |
-| DELETE | `/api/research/sessions/:id` | Cancel session |
-| GET | `/api/research/sessions/:id/findings` | Get all findings |
-| GET | `/api/research/sessions/:id/synthesis` | Get synthesis |
-| POST | `/api/research/sessions/:id/expand` | Request more research |
-| GET | `/api/research/sessions/:id/export` | Export results |
+| DELETE | `/api/research/sessions/:id` | Cancel/delete session |
+| POST | `/api/research/sessions/:id/resume` | Resume a paused session |
+| **Feedback & Control** |
+| POST | `/api/research/sessions/:id/feedback` | Submit user feedback |
+| POST | `/api/research/sessions/:id/finish` | Request immediate completion |
+| POST | `/api/research/sessions/:id/pause` | Pause research loop |
+| **Knowledge** |
+| GET | `/api/research/sessions/:id/knowledge` | Get combined knowledge base |
+| GET | `/api/research/sessions/:id/knowledge/entries` | Get all knowledge entries |
+| GET | `/api/research/sessions/:id/knowledge/gaps` | Get identified gaps |
+| GET | `/api/research/sessions/:id/agents/:agentId/knowledge` | Get agent's knowledge |
+| **Results** |
+| GET | `/api/research/sessions/:id/synthesis` | Get current/final synthesis |
+| GET | `/api/research/sessions/:id/synthesis/history` | Get all iteration syntheses |
+| GET | `/api/research/sessions/:id/sources` | Get all sources |
+| GET | `/api/research/sessions/:id/export` | Export results (format query param) |
+| **Configuration** |
+| GET | `/api/config/prompts/defaults` | Get default agent prompts |
+| PUT | `/api/config/prompts/defaults` | Update default prompts |
+| GET | `/api/config/settings` | Get app settings |
+| PUT | `/api/config/settings` | Update app settings |
 
 ### WebSocket Events
 
 **Client → Server:**
 - `join_session` - Subscribe to session updates
 - `leave_session` - Unsubscribe from session
+- `send_feedback` - Submit feedback (alternative to REST)
+- `request_finish` - Request immediate completion
 
 **Server → Client:**
 - `session_status` - Session status changed
+- `iteration_started` - New research iteration beginning
+- `iteration_complete` - Iteration finished, awaiting feedback
 - `plan_created` - Research plan ready
+- `plan_updated` - Plan modified based on feedback
 - `agent_spawned` - New agent started
 - `agent_status` - Agent status update
+- `agent_progress` - Agent progress percentage
 - `finding_added` - New finding discovered
-- `synthesis_progress` - Synthesis in progress
-- `synthesis_complete` - Research complete
+- `knowledge_updated` - Knowledge base changed
+- `synthesis_started` - Synthesis beginning
+- `synthesis_chunk` - Streaming synthesis content
+- `synthesis_complete` - Synthesis finished
+- `feedback_processed` - User feedback acknowledged
+- `research_complete` - Final results ready
+- `error` - Error occurred
 
 ---
 
@@ -456,9 +1245,13 @@ CREATE TABLE research_sessions (
   id TEXT PRIMARY KEY,
   topic TEXT NOT NULL,
   status TEXT NOT NULL,
+  current_iteration INTEGER DEFAULT 0,
   config JSON NOT NULL,
+  prompt_config JSON,
+  exit_criteria JSON,
   plan JSON,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   completed_at DATETIME
 );
 
@@ -469,29 +1262,90 @@ CREATE TABLE agents (
   role TEXT NOT NULL,
   status TEXT NOT NULL,
   assigned_subtopic TEXT,
+  custom_prompt TEXT,
   started_at DATETIME,
   completed_at DATETIME
 );
 
--- Findings
-CREATE TABLE findings (
+-- Knowledge Entries (unified knowledge storage)
+CREATE TABLE knowledge_entries (
   id TEXT PRIMARY KEY,
   session_id TEXT REFERENCES research_sessions(id),
   agent_id TEXT REFERENCES agents(id),
+  iteration INTEGER NOT NULL,
+
+  -- Content
   content TEXT NOT NULL,
-  sources JSON NOT NULL,
-  confidence REAL,
+  summary TEXT,
   category TEXT,
+  tags JSON,
+
+  -- Quality metrics
+  confidence REAL,
+  relevance REAL,
+  novelty REAL,
+
+  -- Relationships (JSON arrays of entry IDs)
+  related_entries JSON,
+  contradicts JSON,
+  supports JSON,
+
+  -- Versioning
+  version INTEGER DEFAULT 1,
+  previous_version_id TEXT,
+  merged_from JSON,
+
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Synthesis
-CREATE TABLE synthesis (
+-- Sources (linked to knowledge entries)
+CREATE TABLE sources (
   id TEXT PRIMARY KEY,
-  session_id TEXT UNIQUE REFERENCES research_sessions(id),
+  entry_id TEXT REFERENCES knowledge_entries(id),
+  url TEXT NOT NULL,
+  title TEXT,
+  excerpt TEXT,
+  full_content TEXT,
+  reliability REAL,
+  accessed_at DATETIME,
+  published_at DATETIME
+);
+
+-- Synthesis (one per iteration + final)
+CREATE TABLE syntheses (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES research_sessions(id),
+  iteration INTEGER,
+  is_final BOOLEAN DEFAULT FALSE,
   summary TEXT NOT NULL,
   key_findings JSON NOT NULL,
   sections JSON NOT NULL,
+  confidence REAL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- User Feedback
+CREATE TABLE user_feedback (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES research_sessions(id),
+  iteration INTEGER NOT NULL,
+  type TEXT NOT NULL,  -- 'guidance', 'approval', 'stop', 'redirect'
+  content TEXT NOT NULL,
+  processed BOOLEAN DEFAULT FALSE,
+  processed_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Knowledge Gaps (identified by orchestrator)
+CREATE TABLE knowledge_gaps (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES research_sessions(id),
+  iteration INTEGER NOT NULL,
+  subtopic TEXT,
+  description TEXT NOT NULL,
+  priority TEXT,  -- 'high', 'medium', 'low'
+  suggested_queries JSON,
+  resolved BOOLEAN DEFAULT FALSE,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -499,12 +1353,32 @@ CREATE TABLE synthesis (
 CREATE TABLE agent_messages (
   id TEXT PRIMARY KEY,
   session_id TEXT REFERENCES research_sessions(id),
+  iteration INTEGER,
   from_agent TEXT,
   to_agent TEXT,
   type TEXT NOT NULL,
   payload JSON,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Saved Prompts (user customizations)
+CREATE TABLE saved_prompts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  agent_type TEXT NOT NULL,  -- 'orchestrator', 'researcher', 'synthesizer'
+  prompt_text TEXT NOT NULL,
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for performance
+CREATE INDEX idx_knowledge_session ON knowledge_entries(session_id);
+CREATE INDEX idx_knowledge_agent ON knowledge_entries(agent_id);
+CREATE INDEX idx_knowledge_iteration ON knowledge_entries(session_id, iteration);
+CREATE INDEX idx_sources_entry ON sources(entry_id);
+CREATE INDEX idx_feedback_session ON user_feedback(session_id);
+CREATE INDEX idx_gaps_session ON knowledge_gaps(session_id);
 ```
 
 ---
