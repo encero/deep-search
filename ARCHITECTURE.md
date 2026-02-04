@@ -11,8 +11,10 @@ A modular, self-contained LLM application for deep research that runs entirely l
 | Database | SQLite (local) / PostgreSQL (self-hosted) |
 | Queue | BullMQ with Redis (or in-memory for simple deployments) |
 | LLM Provider | OpenRouter API / Local OpenAI-compatible (Ollama, LM Studio, vLLM) |
-| Search | Tavily API / Serper API / SearXNG (self-hosted) |
+| Web Search | SearXNG (self-hosted) / Built-in scraper (Playwright) |
 | Real-time | WebSocket (native ws library) |
+
+**Note:** No external APIs required except for optional cloud LLM providers. All search functionality is self-hosted.
 
 ---
 
@@ -71,12 +73,12 @@ A modular, self-contained LLM application for deep research that runs entirely l
                     ┌─────────────────┼─────────────────┐
                     ▼                 ▼                 ▼
           ┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
-          │   LLM Provider  │ │   Search    │ │   Database      │
-          │                 │ │   Provider  │ │                 │
-          │ • OpenRouter    │ │ • Tavily    │ │ • SQLite (local)│
-          │ • Ollama        │ │ • Serper    │ │ • PostgreSQL    │
-          │ • LM Studio     │ │ • SearXNG   │ │                 │
-          │ • vLLM          │ │   (local)   │ │                 │
+          │   LLM Provider  │ │ Web Search  │ │   Database      │
+          │                 │ │ (self-host) │ │                 │
+          │ • OpenRouter    │ │             │ │ • SQLite (local)│
+          │ • Ollama        │ │ • SearXNG   │ │ • PostgreSQL    │
+          │ • LM Studio     │ │ • Playwright│ │                 │
+          │ • vLLM          │ │   scraper   │ │                 │
           └─────────────────┘ └─────────────┘ └─────────────────┘
 ```
 
@@ -124,11 +126,11 @@ deep-search/
 │   │   │   │   │   ├── openrouter.ts
 │   │   │   │   │   └── openai-compat.ts  # Ollama, LM Studio, etc.
 │   │   │   │   │
-│   │   │   │   ├── search/          # Search provider abstraction
+│   │   │   │   ├── search/          # Web search (self-hosted only)
 │   │   │   │   │   ├── provider.ts  # Interface
-│   │   │   │   │   ├── tavily.ts
-│   │   │   │   │   ├── serper.ts
-│   │   │   │   │   └── searxng.ts   # Self-hosted option
+│   │   │   │   │   ├── searxng.ts   # SearXNG integration
+│   │   │   │   │   ├── scraper.ts   # Playwright-based scraper
+│   │   │   │   │   └── parser.ts    # HTML content extraction
 │   │   │   │   │
 │   │   │   │   └── websocket/
 │   │   │   │       ├── handler.ts
@@ -215,17 +217,43 @@ interface LLMProvider {
 // - OpenAICompatProvider: Works with Ollama, LM Studio, vLLM, LocalAI
 ```
 
-### Search Provider Interface
+### Web Search Provider Interface (Self-Hosted Only)
 
 ```typescript
 interface SearchProvider {
   search(query: string, options?: SearchOptions): Promise<SearchResult[]>;
+  fetchPage(url: string): Promise<PageContent>;  // For deep content extraction
 }
 
-// Implementations:
-// - TavilyProvider: Tavily API (best quality)
-// - SerperProvider: Serper API (Google results)
-// - SearXNGProvider: Self-hosted meta search engine
+// Implementations (no external APIs):
+// - SearXNGProvider: Self-hosted meta search engine (aggregates Google, Bing, DuckDuckGo, etc.)
+// - PlaywrightScraper: Direct web scraping with headless browser for content extraction
+```
+
+### Web Scraping Layer
+
+```typescript
+interface WebScraper {
+  // Fetch and extract content from URLs found in search results
+  scrape(url: string): Promise<ScrapedContent>;
+  scrapeMultiple(urls: string[]): Promise<ScrapedContent[]>;
+}
+
+interface ScrapedContent {
+  url: string;
+  title: string;
+  content: string;        // Cleaned text content
+  markdown: string;       // Markdown formatted
+  links: string[];        // Outbound links for deeper research
+  metadata: {
+    author?: string;
+    publishedDate?: string;
+    description?: string;
+  };
+}
+
+// Uses Playwright for JavaScript-rendered pages
+// Falls back to simple fetch + cheerio for static pages
 ```
 
 ### Agent Interface
@@ -494,16 +522,20 @@ NODE_ENV=development
 DATABASE_URL=file:./data/deep-search.db
 # DATABASE_URL=postgresql://user:pass@localhost:5432/deep_search
 
-# LLM Provider
+# LLM Provider (only external API dependency - optional if using local)
 LLM_PROVIDER=openai-compat  # openrouter | openai-compat
-LLM_BASE_URL=http://localhost:11434/v1  # Ollama
+LLM_BASE_URL=http://localhost:11434/v1  # Ollama default
 LLM_API_KEY=optional-for-local
 LLM_MODEL=llama3.2
 
-# Search Provider
-SEARCH_PROVIDER=tavily  # tavily | serper | searxng
-TAVILY_API_KEY=your-key
-# SEARXNG_URL=http://localhost:8080  # For self-hosted
+# Web Search (self-hosted - no external APIs)
+SEARCH_PROVIDER=searxng  # searxng | scraper
+SEARXNG_URL=http://localhost:8080
+
+# Scraper Settings
+SCRAPER_TIMEOUT=30000
+SCRAPER_MAX_CONCURRENT=5
+SCRAPER_USER_AGENT=DeepSearch/1.0
 
 # Research Defaults
 DEFAULT_MAX_AGENTS=3
@@ -515,7 +547,11 @@ DEFAULT_DEPTH_LEVEL=medium
 
 ## Local Deployment Options
 
-### Option 1: Minimal (SQLite + Ollama)
+All deployments are fully self-contained with no external API dependencies (except optional cloud LLM).
+
+### Option 1: Minimal (SQLite + Ollama + Built-in Scraper)
+
+No Docker required for search - uses built-in Playwright scraper.
 
 ```yaml
 # docker-compose.yml
@@ -528,14 +564,48 @@ services:
       - DATABASE_URL=file:./data/deep-search.db
       - LLM_PROVIDER=openai-compat
       - LLM_BASE_URL=http://host.docker.internal:11434/v1
-      - SEARCH_PROVIDER=tavily
+      - SEARCH_PROVIDER=scraper  # Built-in, no external service needed
     volumes:
       - ./data:/app/data
 
-# Run Ollama separately on host
+# Run Ollama separately on host: ollama serve
 ```
 
-### Option 2: Full Self-Hosted (PostgreSQL + Ollama + SearXNG)
+### Option 2: Full Stack (SQLite + Ollama + SearXNG)
+
+Better search quality with self-hosted SearXNG meta-search.
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:./data/deep-search.db
+      - LLM_PROVIDER=openai-compat
+      - LLM_BASE_URL=http://host.docker.internal:11434/v1
+      - SEARCH_PROVIDER=searxng
+      - SEARXNG_URL=http://searxng:8080
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - searxng
+
+  searxng:
+    image: searxng/searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng
+
+# Run Ollama separately on host: ollama serve
+```
+
+### Option 3: Production (PostgreSQL + Ollama + SearXNG + Redis)
+
+Full self-hosted production deployment.
 
 ```yaml
 # docker-compose.yml
@@ -550,10 +620,12 @@ services:
       - LLM_BASE_URL=http://ollama:11434/v1
       - SEARCH_PROVIDER=searxng
       - SEARXNG_URL=http://searxng:8080
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - db
       - ollama
       - searxng
+      - redis
 
   db:
     image: postgres:16-alpine
@@ -575,8 +647,6 @@ services:
 
   searxng:
     image: searxng/searxng
-    ports:
-      - "8080:8080"
     volumes:
       - ./searxng:/etc/searxng
 
@@ -589,6 +659,42 @@ volumes:
   postgres_data:
   ollama_data:
   redis_data:
+```
+
+### SearXNG Configuration
+
+Create `searxng/settings.yml` for optimal research results:
+
+```yaml
+general:
+  instance_name: "Deep Search"
+
+search:
+  safe_search: 0
+  default_lang: "en"
+
+engines:
+  - name: google
+    engine: google
+    disabled: false
+  - name: bing
+    engine: bing
+    disabled: false
+  - name: duckduckgo
+    engine: duckduckgo
+    disabled: false
+  - name: wikipedia
+    engine: wikipedia
+    disabled: false
+  - name: arxiv
+    engine: arxiv
+    disabled: false
+
+server:
+  secret_key: "change-this-in-production"
+
+outgoing:
+  request_timeout: 10.0
 ```
 
 ---
