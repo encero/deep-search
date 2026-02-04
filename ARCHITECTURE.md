@@ -1,18 +1,21 @@
 # Deep Research LLM Application - Architecture
 
-A modular, self-contained LLM application for deep research that runs entirely locally or self-hosted.
+A modular, self-contained LLM application for deep research built with TanStack Start.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React, TypeScript, Tailwind CSS, shadcn/ui |
-| Backend | Node.js, TypeScript, Express |
-| Database | SQLite (local) / PostgreSQL (self-hosted) |
-| Queue | BullMQ with Redis (or in-memory for simple deployments) |
-| LLM Provider | OpenRouter API / Local OpenAI-compatible (Ollama, LM Studio, vLLM) |
+| Framework | TanStack Start (full-stack React) |
+| Routing | TanStack Router (file-based) |
+| Data Fetching | TanStack Query + tRPC |
+| AI Integration | TanStack AI (multi-provider) |
+| State Management | TanStack Store |
+| Database | Drizzle ORM + SQLite (local) / PostgreSQL (self-hosted) |
+| Styling | Tailwind CSS 4 + shadcn/ui |
+| Real-time | Server-Sent Events (SSE) |
+| LLM Provider | Anthropic / OpenAI / Ollama / OpenRouter |
 | Web Search | SearXNG (self-hosted) / Built-in scraper (Playwright) |
-| Real-time | WebSocket (native ws library) |
 
 **Note:** No external APIs required except for optional cloud LLM providers. All search functionality is self-hosted.
 
@@ -22,63 +25,61 @@ A modular, self-contained LLM application for deep research that runs entirely l
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              FRONTEND (React)                                │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  Research Input  │  Agent Status Panel  │  Synthesis Results View  │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-│                              WebSocket Client                                │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              BACKEND (Node.js)                               │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                         API Gateway (Express)                         │   │
-│  │              REST Endpoints  │  WebSocket Handler                     │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
+│                         TANSTACK START APPLICATION                           │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                              ROUTES (UI)                                │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │  Research Input  │  Agent Status Panel  │  Synthesis Results   │  │ │
+│  │  └─────────────────────────────────────────────────────────────────┘  │ │
+│  │                                                                        │ │
+│  │  TanStack Query (cache) ◄──► tRPC Client ◄──► SSE EventSource        │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
 │                                      │                                       │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                         MODULE SYSTEM                                 │   │
-│  │    ┌────────────────────┐  ┌────────────────┐  ┌────────────────┐    │   │
-│  │    │  Deep Research     │  │  Future        │  │  Future        │    │   │
-│  │    │  Module            │  │  Module A      │  │  Module B      │    │   │
-│  │    └────────────────────┘  └────────────────┘  └────────────────┘    │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                         SERVER LAYER (Nitro)                           │ │
+│  │                                                                        │ │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────────┐  │ │
+│  │  │  Server Funcs    │  │  tRPC Router     │  │  API Routes        │  │ │
+│  │  │  (mutations)     │  │  (type-safe RPC) │  │  (SSE streaming)   │  │ │
+│  │  └──────────────────┘  └──────────────────┘  └────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
 │                                      │                                       │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                      AGENT ORCHESTRATION                              │   │
-│  │                                                                       │   │
-│  │                    ┌─────────────────────┐                            │   │
-│  │                    │  Orchestrator Agent │                            │   │
-│  │                    │  (Master Controller)│                            │   │
-│  │                    └──────────┬──────────┘                            │   │
-│  │                               │                                       │   │
-│  │          ┌────────────────────┼────────────────────┐                  │   │
-│  │          ▼                    ▼                    ▼                  │   │
-│  │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐            │   │
-│  │  │  Researcher  │    │  Researcher  │    │  Researcher  │            │   │
-│  │  │  Agent 1     │    │  Agent 2     │    │  Agent N     │            │   │
-│  │  └──────────────┘    └──────────────┘    └──────────────┘            │   │
-│  │          │                    │                    │                  │   │
-│  │          └────────────────────┼────────────────────┘                  │   │
-│  │                               ▼                                       │   │
-│  │                    ┌─────────────────────┐                            │   │
-│  │                    │  Synthesizer Agent  │                            │   │
-│  │                    └─────────────────────┘                            │   │
-│  │                                                                       │   │
-│  │                       Message Bus (Event-driven)                      │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                      AGENT ORCHESTRATION                               │ │
+│  │                                                                        │ │
+│  │                    ┌─────────────────────┐                             │ │
+│  │                    │  Orchestrator Agent │                             │ │
+│  │                    │  (Master Controller)│                             │ │
+│  │                    └──────────┬──────────┘                             │ │
+│  │                               │                                        │ │
+│  │          ┌────────────────────┼────────────────────┐                   │ │
+│  │          ▼                    ▼                    ▼                   │ │
+│  │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐             │ │
+│  │  │  Researcher  │    │  Researcher  │    │  Researcher  │             │ │
+│  │  │  Agent 1     │    │  Agent 2     │    │  Agent N     │             │ │
+│  │  └──────────────┘    └──────────────┘    └──────────────┘             │ │
+│  │          │                    │                    │                   │ │
+│  │          └────────────────────┼────────────────────┘                   │ │
+│  │                               ▼                                        │ │
+│  │                    ┌─────────────────────┐                             │ │
+│  │                    │  Synthesizer Agent  │                             │ │
+│  │                    └─────────────────────┘                             │ │
+│  │                                                                        │ │
+│  │                       Event Emitter (In-process)                       │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                     ┌─────────────────┼─────────────────┐
                     ▼                 ▼                 ▼
           ┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
           │   LLM Provider  │ │ Web Search  │ │   Database      │
-          │                 │ │ (self-host) │ │                 │
-          │ • OpenRouter    │ │             │ │ • SQLite (local)│
-          │ • Ollama        │ │ • SearXNG   │ │ • PostgreSQL    │
-          │ • LM Studio     │ │ • Playwright│ │                 │
-          │ • vLLM          │ │   scraper   │ │                 │
+          │   (TanStack AI) │ │ (self-host) │ │   (Drizzle)     │
+          │                 │ │             │ │                 │
+          │ • Anthropic     │ │ • SearXNG   │ │ • SQLite (local)│
+          │ • OpenAI        │ │ • Playwright│ │ • PostgreSQL    │
+          │ • Ollama        │ │   scraper   │ │                 │
+          │ • OpenRouter    │ │             │ │                 │
           └─────────────────┘ └─────────────┘ └─────────────────┘
 ```
 
@@ -88,163 +89,199 @@ A modular, self-contained LLM application for deep research that runs entirely l
 
 ```
 deep-search/
-├── packages/
-│   └── shared/                      # Shared types and utilities
-│       ├── src/
-│       │   ├── types/
-│       │   │   ├── agents.ts        # Agent interfaces
-│       │   │   ├── research.ts      # Research session types
-│       │   │   ├── messages.ts      # Inter-agent message types
-│       │   │   ├── llm.ts           # LLM provider types
-│       │   │   ├── search.ts        # Search provider types
-│       │   │   └── events.ts        # WebSocket event types
-│       │   └── index.ts
-│       └── package.json
-│
-├── apps/
-│   ├── backend/
-│   │   ├── src/
-│   │   │   ├── index.ts             # Entry point
-│   │   │   ├── server.ts            # Express + WebSocket setup
-│   │   │   │
-│   │   │   ├── config/
-│   │   │   │   ├── index.ts         # Config loader
-│   │   │   │   └── schema.ts        # Config validation
-│   │   │   │
-│   │   │   ├── core/
-│   │   │   │   ├── module-registry/ # Plugin system for modules
-│   │   │   │   │   ├── registry.ts
-│   │   │   │   │   └── types.ts
-│   │   │   │   │
-│   │   │   │   ├── agents/          # Agent framework
-│   │   │   │   │   ├── base-agent.ts
-│   │   │   │   │   ├── agent-pool.ts
-│   │   │   │   │   └── message-bus.ts
-│   │   │   │   │
-│   │   │   │   ├── llm/             # LLM provider abstraction
-│   │   │   │   │   ├── provider.ts  # Interface
-│   │   │   │   │   ├── openrouter.ts
-│   │   │   │   │   └── openai-compat.ts  # Ollama, LM Studio, etc.
-│   │   │   │   │
-│   │   │   │   ├── search/          # Web search (self-hosted only)
-│   │   │   │   │   ├── provider.ts  # Interface
-│   │   │   │   │   ├── searxng.ts   # SearXNG integration
-│   │   │   │   │   ├── scraper.ts   # Playwright-based scraper
-│   │   │   │   │   └── parser.ts    # HTML content extraction
-│   │   │   │   │
-│   │   │   │   └── websocket/
-│   │   │   │       ├── handler.ts
-│   │   │   │       └── rooms.ts
-│   │   │   │
-│   │   │   ├── modules/
-│   │   │   │   └── deep-research/
-│   │   │   │       ├── index.ts     # Module registration
-│   │   │   │       ├── routes.ts    # API endpoints
-│   │   │   │       ├── agents/
-│   │   │   │       │   ├── orchestrator.ts
-│   │   │   │       │   ├── researcher.ts
-│   │   │   │       │   └── synthesizer.ts
-│   │   │   │       ├── services/
-│   │   │   │       │   ├── session-manager.ts
-│   │   │   │       │   └── research-planner.ts
-│   │   │   │       └── prompts/
-│   │   │   │           ├── orchestrator.ts
-│   │   │   │           ├── researcher.ts
-│   │   │   │           └── synthesizer.ts
-│   │   │   │
-│   │   │   └── database/
-│   │   │       ├── client.ts
-│   │   │       ├── schema.ts        # Drizzle/Prisma schema
-│   │   │       └── repositories/
+├── src/
+│   ├── routes/                          # File-based routing (TanStack Router)
+│   │   ├── __root.tsx                   # Root layout with providers
+│   │   ├── index.tsx                    # Home page
 │   │   │
-│   │   ├── prisma/
-│   │   │   └── schema.prisma
-│   │   └── package.json
+│   │   ├── research/                    # Deep research module routes
+│   │   │   ├── index.tsx                # Research list / new research
+│   │   │   ├── $sessionId.tsx           # Active research session view
+│   │   │   └── $sessionId.results.tsx   # Final results view
+│   │   │
+│   │   ├── settings/
+│   │   │   └── index.tsx                # App settings page
+│   │   │
+│   │   └── api/                         # API route handlers
+│   │       ├── trpc.$.ts                # tRPC catch-all handler
+│   │       │
+│   │       └── research/                # Research API endpoints
+│   │           ├── sessions.ts          # POST: create session
+│   │           ├── sessions.$id.ts      # GET/DELETE session
+│   │           ├── sessions.$id.stream.ts   # GET: SSE event stream
+│   │           ├── sessions.$id.feedback.ts # POST: user feedback
+│   │           └── sessions.$id.finish.ts   # POST: finish research
 │   │
-│   └── frontend/
-│       ├── src/
-│       │   ├── main.tsx
-│       │   ├── App.tsx
-│       │   │
-│       │   ├── components/
-│       │   │   ├── ui/              # shadcn/ui components
-│       │   │   ├── layout/
-│       │   │   └── common/
-│       │   │
-│       │   ├── modules/
-│       │   │   └── deep-research/
-│       │   │       ├── pages/
-│       │   │       │   └── ResearchPage.tsx
-│       │   │       ├── components/
-│       │   │       │   ├── TopicInput.tsx
-│       │   │       │   ├── AgentStatusPanel.tsx
-│       │   │       │   ├── ResearchTimeline.tsx
-│       │   │       │   └── SynthesisView.tsx
-│       │   │       ├── hooks/
-│       │   │       │   └── useResearchSession.ts
-│       │   │       └── store/
-│       │   │           └── research-store.ts
-│       │   │
-│       │   ├── lib/
-│       │   │   ├── websocket.ts
-│       │   │   └── api-client.ts
-│       │   │
-│       │   └── stores/
-│       │       └── app-store.ts
-│       │
-│       ├── index.html
-│       └── package.json
+│   ├── server/                          # Server-only code
+│   │   ├── agents/                      # Agent system
+│   │   │   ├── base-agent.ts            # Abstract base agent class
+│   │   │   ├── orchestrator.ts          # Orchestrator agent
+│   │   │   ├── researcher.ts            # Researcher agent
+│   │   │   ├── synthesizer.ts           # Synthesizer agent
+│   │   │   ├── agent-pool.ts            # Agent lifecycle management
+│   │   │   └── event-bus.ts             # In-process event emitter
+│   │   │
+│   │   ├── services/                    # Business logic
+│   │   │   ├── session-manager.ts       # Session lifecycle
+│   │   │   ├── research-planner.ts      # Research planning
+│   │   │   └── knowledge-store.ts       # Knowledge aggregation
+│   │   │
+│   │   ├── providers/                   # External service adapters
+│   │   │   ├── llm/
+│   │   │   │   ├── index.ts             # LLM provider factory
+│   │   │   │   └── adapter.ts           # Uses TanStack AI adapters
+│   │   │   │
+│   │   │   └── search/
+│   │   │       ├── index.ts             # Search provider factory
+│   │   │       ├── searxng.ts           # SearXNG integration
+│   │   │       └── scraper.ts           # Playwright scraper
+│   │   │
+│   │   ├── prompts/                     # Agent system prompts
+│   │   │   ├── orchestrator.ts
+│   │   │   ├── researcher.ts
+│   │   │   └── synthesizer.ts
+│   │   │
+│   │   └── functions/                   # Server functions (createServerFn)
+│   │       ├── sessions.ts              # Session CRUD operations
+│   │       ├── feedback.ts              # User feedback handling
+│   │       └── settings.ts              # Settings management
+│   │
+│   ├── integrations/
+│   │   └── trpc/                        # tRPC setup
+│   │       ├── init.ts                  # tRPC initialization
+│   │       ├── router.ts                # Combined router
+│   │       ├── routers/
+│   │       │   ├── sessions.ts          # Session procedures
+│   │       │   ├── knowledge.ts         # Knowledge queries
+│   │       │   └── settings.ts          # Settings procedures
+│   │       └── react.ts                 # React client setup
+│   │
+│   ├── modules/
+│   │   └── research/                    # Research module UI
+│   │       ├── components/
+│   │       │   ├── TopicInput.tsx
+│   │       │   ├── AgentStatusPanel.tsx
+│   │       │   ├── AgentCard.tsx
+│   │       │   ├── ResearchTimeline.tsx
+│   │       │   ├── SynthesisView.tsx
+│   │       │   ├── FeedbackBar.tsx
+│   │       │   └── ResultsExport.tsx
+│   │       │
+│   │       ├── hooks/
+│   │       │   ├── useResearchSession.ts    # Session state & SSE
+│   │       │   ├── useAgentStatus.ts        # Agent status from SSE
+│   │       │   └── useSynthesis.ts          # Synthesis streaming
+│   │       │
+│   │       └── stores/
+│   │           └── research-store.ts        # TanStack Store for UI state
+│   │
+│   ├── components/
+│   │   ├── ui/                          # shadcn/ui components
+│   │   │   ├── button.tsx
+│   │   │   ├── card.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── progress.tsx
+│   │   │   ├── badge.tsx
+│   │   │   ├── tabs.tsx
+│   │   │   ├── collapsible.tsx
+│   │   │   ├── dialog.tsx
+│   │   │   ├── tooltip.tsx
+│   │   │   ├── skeleton.tsx
+│   │   │   └── toast.tsx
+│   │   │
+│   │   └── layout/
+│   │       ├── Header.tsx
+│   │       ├── Sidebar.tsx
+│   │       └── PageContainer.tsx
+│   │
+│   ├── lib/
+│   │   ├── utils.ts                     # General utilities
+│   │   ├── sse-client.ts                # SSE EventSource wrapper
+│   │   └── export.ts                    # Export helpers (MD, PDF)
+│   │
+│   ├── types/                           # Shared TypeScript types
+│   │   ├── agents.ts
+│   │   ├── research.ts
+│   │   ├── messages.ts
+│   │   ├── knowledge.ts
+│   │   └── events.ts
+│   │
+│   ├── db/
+│   │   ├── index.ts                     # Drizzle client
+│   │   ├── schema.ts                    # Database schema
+│   │   └── migrations/                  # Drizzle migrations
+│   │
+│   ├── env.ts                           # T3Env configuration
+│   ├── router.tsx                       # Router configuration
+│   └── root-provider.tsx                # Root providers (Query, tRPC)
 │
-├── docker-compose.yml               # Local deployment
-├── .env.example
-└── package.json                     # Workspace root
+├── drizzle.config.ts
+├── vite.config.ts
+├── tailwind.config.ts
+├── tsconfig.json
+├── package.json
+└── .env.example
 ```
 
 ---
 
 ## Core Abstractions
 
-### LLM Provider Interface
+### LLM Provider (via TanStack AI)
 
 ```typescript
-interface LLMProvider {
-  chat(request: ChatRequest): Promise<ChatResponse>;
-  streamChat(request: ChatRequest): AsyncIterable<ChatStreamChunk>;
+// src/server/providers/llm/adapter.ts
+import { anthropic } from '@anthropic-ai/sdk';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createOllama } from 'ollama-ai-provider';
+
+export function getLLMAdapter() {
+  // Uses existing TanStack AI adapter pattern from project
+  if (process.env.ANTHROPIC_API_KEY) {
+    return anthropic('claude-sonnet-4-20250514');
+  }
+  if (process.env.OPENAI_API_KEY) {
+    return createOpenAI()('gpt-4o');
+  }
+  if (process.env.OLLAMA_BASE_URL) {
+    return createOllama({ baseURL: process.env.OLLAMA_BASE_URL })('llama3.2');
+  }
+  throw new Error('No LLM provider configured');
 }
 
-// Implementations:
-// - OpenRouterProvider: Uses OpenRouter API
-// - OpenAICompatProvider: Works with Ollama, LM Studio, vLLM, LocalAI
+// Usage in agents - leverages TanStack AI streamText
+import { streamText } from 'ai';
+
+const stream = await streamText({
+  model: getLLMAdapter(),
+  system: ORCHESTRATOR_SYSTEM_PROMPT,
+  messages: conversationHistory,
+  tools: orchestratorTools,
+});
 ```
 
-### Web Search Provider Interface (Self-Hosted Only)
+### Web Search Provider Interface
 
 ```typescript
+// src/server/providers/search/index.ts
 interface SearchProvider {
   search(query: string, options?: SearchOptions): Promise<SearchResult[]>;
-  fetchPage(url: string): Promise<PageContent>;  // For deep content extraction
+  fetchPage(url: string): Promise<PageContent>;
 }
 
-// Implementations (no external APIs):
-// - SearXNGProvider: Self-hosted meta search engine (aggregates Google, Bing, DuckDuckGo, etc.)
-// - PlaywrightScraper: Direct web scraping with headless browser for content extraction
-```
-
-### Web Scraping Layer
-
-```typescript
-interface WebScraper {
-  // Fetch and extract content from URLs found in search results
-  scrape(url: string): Promise<ScrapedContent>;
-  scrapeMultiple(urls: string[]): Promise<ScrapedContent[]>;
-}
-
-interface ScrapedContent {
+interface SearchResult {
   url: string;
   title: string;
-  content: string;        // Cleaned text content
+  snippet: string;
+  relevanceScore?: number;
+}
+
+interface PageContent {
+  url: string;
+  title: string;
+  content: string;        // Cleaned text
   markdown: string;       // Markdown formatted
-  links: string[];        // Outbound links for deeper research
+  links: string[];        // Outbound links
   metadata: {
     author?: string;
     publishedDate?: string;
@@ -252,19 +289,229 @@ interface ScrapedContent {
   };
 }
 
-// Uses Playwright for JavaScript-rendered pages
-// Falls back to simple fetch + cheerio for static pages
+// Factory function
+export function getSearchProvider(): SearchProvider {
+  if (process.env.SEARXNG_URL) {
+    return new SearXNGProvider(process.env.SEARXNG_URL);
+  }
+  return new PlaywrightScraper();
+}
 ```
 
 ### Agent Interface
 
 ```typescript
-abstract class BaseAgent {
+// src/server/agents/base-agent.ts
+import { EventEmitter } from 'events';
+
+export abstract class BaseAgent {
+  protected id: string;
+  protected sessionId: string;
+  protected eventBus: EventEmitter;
+
   abstract run(): Promise<void>;
   abstract handleMessage(message: AgentMessage): Promise<void>;
 
-  protected sendMessage(to: AgentId, type: MessageType, payload: unknown): void;
-  protected updateStatus(status: AgentStatus): void;
+  protected emit(event: AgentEvent): void {
+    this.eventBus.emit('agent:event', {
+      agentId: this.id,
+      sessionId: this.sessionId,
+      ...event,
+    });
+  }
+
+  protected updateStatus(status: AgentStatus): void {
+    this.emit({ type: 'status_update', status });
+  }
+}
+```
+
+---
+
+## Server Functions & tRPC
+
+### Server Functions (Mutations)
+
+```typescript
+// src/server/functions/sessions.ts
+import { createServerFn } from '@tanstack/react-start/server';
+import { z } from 'zod';
+
+export const createSession = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      topic: z.string().min(1),
+      config: ResearchConfigSchema.optional(),
+      promptConfig: AgentPromptConfigSchema.optional(),
+    })
+  )
+  .handler(async ({ data }) => {
+    const session = await sessionManager.create(data);
+    // Start research in background (non-blocking)
+    orchestrator.start(session.id);
+    return session;
+  });
+
+export const submitFeedback = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      sessionId: z.string(),
+      type: z.enum(['guidance', 'approval', 'stop', 'redirect']),
+      content: z.string(),
+    })
+  )
+  .handler(async ({ data }) => {
+    return feedbackService.process(data);
+  });
+```
+
+### tRPC Router (Queries)
+
+```typescript
+// src/integrations/trpc/routers/sessions.ts
+import { router, publicProcedure } from '../init';
+import { z } from 'zod';
+
+export const sessionsRouter = router({
+  list: publicProcedure.query(async () => {
+    return db.select().from(researchSessions).orderBy(desc(createdAt));
+  }),
+
+  get: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      return db.query.researchSessions.findFirst({
+        where: eq(researchSessions.id, input.id),
+        with: { agents: true, syntheses: true },
+      });
+    }),
+
+  getKnowledge: publicProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .query(async ({ input }) => {
+      return knowledgeStore.getCombined(input.sessionId);
+    }),
+});
+```
+
+---
+
+## Real-time with Server-Sent Events
+
+### SSE Endpoint
+
+```typescript
+// src/routes/api/research/sessions.$id.stream.ts
+import { createAPIFileRoute } from '@tanstack/react-start/api';
+import { eventBus } from '~/server/agents/event-bus';
+
+export const Route = createAPIFileRoute('/api/research/sessions/$id/stream')({
+  GET: async ({ request, params }) => {
+    const { id: sessionId } = params;
+    const encoder = new TextEncoder();
+
+    const stream = new ReadableStream({
+      start(controller) {
+        const sendEvent = (event: AgentEvent) => {
+          const data = `data: ${JSON.stringify(event)}\n\n`;
+          controller.enqueue(encoder.encode(data));
+        };
+
+        // Subscribe to session events
+        const handler = (event: AgentEvent) => {
+          if (event.sessionId === sessionId) {
+            sendEvent(event);
+          }
+        };
+
+        eventBus.on('agent:event', handler);
+
+        // Handle client disconnect
+        request.signal.addEventListener('abort', () => {
+          eventBus.off('agent:event', handler);
+          controller.close();
+        });
+
+        // Send initial connection event
+        sendEvent({ type: 'connected', sessionId });
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    });
+  },
+});
+```
+
+### SSE Client Hook
+
+```typescript
+// src/modules/research/hooks/useResearchSession.ts
+import { useEffect, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { trpc } from '~/integrations/trpc/react';
+
+export function useResearchSession(sessionId: string) {
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<SessionStatus>('connecting');
+  const [agents, setAgents] = useState<AgentState[]>([]);
+  const [synthesis, setSynthesis] = useState<string>('');
+
+  // Initial data from tRPC
+  const { data: session } = trpc.sessions.get.useQuery({ id: sessionId });
+
+  // SSE for real-time updates
+  useEffect(() => {
+    const eventSource = new EventSource(
+      `/api/research/sessions/${sessionId}/stream`
+    );
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data) as AgentEvent;
+
+      switch (data.type) {
+        case 'status_update':
+          setStatus(data.status);
+          break;
+        case 'agent_status':
+          setAgents((prev) =>
+            prev.map((a) => (a.id === data.agentId ? { ...a, ...data } : a))
+          );
+          break;
+        case 'agent_spawned':
+          setAgents((prev) => [...prev, data.agent]);
+          break;
+        case 'synthesis_chunk':
+          setSynthesis((prev) => prev + data.chunk);
+          break;
+        case 'finding_added':
+          // Invalidate knowledge query to refetch
+          queryClient.invalidateQueries({
+            queryKey: ['sessions', sessionId, 'knowledge'],
+          });
+          break;
+        case 'research_complete':
+          setStatus('completed');
+          queryClient.invalidateQueries({
+            queryKey: ['sessions', sessionId],
+          });
+          break;
+      }
+    };
+
+    eventSource.onerror = () => {
+      setStatus('error');
+    };
+
+    return () => eventSource.close();
+  }, [sessionId, queryClient]);
+
+  return { session, status, agents, synthesis };
 }
 ```
 
@@ -273,8 +520,6 @@ abstract class BaseAgent {
 ## Agent System Design
 
 ### Research Loop (Iterative with User Feedback)
-
-The research process runs in a **continuous loop** until the Orchestrator decides to exit or the user intervenes. Users can provide feedback at any point to guide the research direction.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -319,125 +564,63 @@ The research process runs in a **continuous loop** until the Orchestrator decide
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Loop Exit Conditions
-
-The Orchestrator decides to exit the loop when:
-
-1. **Saturation**: No new significant findings in last N iterations
-2. **Coverage**: All planned subtopics adequately researched
-3. **Confidence**: Synthesis confidence score exceeds threshold
-4. **User Signal**: User explicitly requests completion
-5. **Resource Limits**: Max iterations or time limit reached
+### Loop Exit Criteria
 
 ```typescript
 interface LoopExitCriteria {
   maxIterations: number;              // Hard limit (default: 10)
   maxDurationMinutes: number;         // Time limit (default: 30)
-  minConfidenceScore: number;         // 0-1, synthesis confidence (default: 0.7)
-  saturationThreshold: number;        // New findings % that triggers exit (default: 0.1)
-  requiredSubtopicCoverage: number;   // % of subtopics covered (default: 0.8)
+  minConfidenceScore: number;         // 0-1 (default: 0.7)
+  saturationThreshold: number;        // New findings % (default: 0.1)
+  requiredSubtopicCoverage: number;   // % of subtopics (default: 0.8)
 }
 ```
 
-### Detailed Research Flow
-
-```
-1. INITIALIZATION
-   │
-   ├── User enters topic
-   ├── User optionally configures:
-   │   • Research depth (shallow/medium/deep)
-   │   • Custom system prompts for agents
-   │   • Focus areas to prioritize
-   │   • Areas to exclude
-   │   • Exit criteria overrides
-   │
-   ▼
-2. PLANNING PHASE
-   │
-   ├── Orchestrator analyzes topic
-   ├── Generates research plan with subtopics
-   ├── Determines agent allocation
-   ├── Initializes Knowledge Storage
-   │
-   ▼
-3. RESEARCH LOOP ←──────────────────────────────────┐
-   │                                                 │
-   ├── Orchestrator spawns/assigns Researcher Agents │
-   │                                                 │
-   ├── Researchers work in parallel:                 │
-   │   ├── Execute web searches                      │
-   │   ├── Scrape and analyze content                │
-   │   ├── Extract findings with confidence scores   │
-   │   ├── Store in per-agent Knowledge Storage      │
-   │   └── Report to Orchestrator                    │
-   │                                                 │
-   ├── Orchestrator evaluates findings:              │
-   │   ├── Merge into Combined Knowledge Storage     │
-   │   ├── Identify gaps and contradictions          │
-   │   ├── Request clarifications if needed          │
-   │   └── Plan next research directions             │
-   │                                                 │
-   ├── Synthesis (incremental):                      │
-   │   ├── Generate current state summary            │
-   │   ├── Update key findings list                  │
-   │   └── Present to user with progress             │
-   │                                                 │
-   ├── User Feedback Window:                         │
-   │   ├── User reviews current synthesis            │
-   │   ├── User can provide guidance                 │
-   │   ├── User can approve and continue             │
-   │   └── User can request completion               │
-   │                                                 │
-   ├── Orchestrator Decision:                        │
-   │   ├── Check exit criteria                       │
-   │   ├── Process user feedback                     │
-   │   └── Continue or Exit?                         │
-   │       │                                         │
-   │       ├── CONTINUE ─────────────────────────────┘
-   │       │
-   │       └── EXIT ─────────┐
-   │                         │
-   ▼                         │
-4. FINAL SYNTHESIS           │
-   │◄────────────────────────┘
-   ├── Comprehensive summary generation
-   ├── Structured report with all sections
-   ├── Source compilation and verification
-   ├── Confidence assessment
-   │
-   ▼
-5. COMPLETION
-   │
-   ├── Final report presented
-   ├── Export options available
-   └── Session saved to history
-```
-
-### Message Types
+### Event Types
 
 ```typescript
-enum MessageType {
-  // Orchestrator → Researcher
-  ASSIGN_TASK = 'assign_task',
-  REQUEST_CLARIFICATION = 'request_clarification',
-  EXPAND_RESEARCH = 'expand_research',
-  STOP_RESEARCH = 'stop_research',
+// src/types/events.ts
+type AgentEventType =
+  // Session events
+  | 'session_status'
+  | 'iteration_started'
+  | 'iteration_complete'
 
-  // Researcher → Orchestrator
-  FINDING_REPORT = 'finding_report',
-  TASK_COMPLETED = 'task_completed',
-  CLARIFICATION_RESPONSE = 'clarification_response',
+  // Planning events
+  | 'plan_created'
+  | 'plan_updated'
 
-  // Orchestrator → Synthesizer
-  SYNTHESIZE_REQUEST = 'synthesize_request',
+  // Agent lifecycle
+  | 'agent_spawned'
+  | 'agent_status'
+  | 'agent_progress'
+  | 'agent_completed'
 
-  // Synthesizer → Orchestrator
-  SYNTHESIS_COMPLETE = 'synthesis_complete',
+  // Research events
+  | 'search_started'
+  | 'search_complete'
+  | 'finding_added'
+  | 'knowledge_updated'
 
-  // User Feedback (via Orchestrator)
-  USER_FEEDBACK = 'user_feedback',
-  USER_STOP_REQUEST = 'user_stop_request',
+  // Synthesis events
+  | 'synthesis_started'
+  | 'synthesis_chunk'
+  | 'synthesis_complete'
+
+  // User interaction
+  | 'feedback_received'
+  | 'feedback_processed'
+
+  // Completion
+  | 'research_complete'
+  | 'error';
+
+interface AgentEvent {
+  type: AgentEventType;
+  sessionId: string;
+  agentId?: string;
+  timestamp: number;
+  data?: unknown;
 }
 ```
 
@@ -445,9 +628,7 @@ enum MessageType {
 
 ## Knowledge Storage
 
-Two-tier knowledge storage system: per-agent working memory and combined research knowledge base.
-
-### Architecture
+### Two-Tier Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -484,15 +665,16 @@ Two-tier knowledge storage system: per-agent working memory and combined researc
 ### Knowledge Entry Structure
 
 ```typescript
+// src/types/knowledge.ts
 interface KnowledgeEntry {
   id: string;
   sessionId: string;
 
   // Content
-  content: string;                    // The actual finding/fact
-  summary: string;                    // One-line summary
-  category: string;                   // Subtopic category
-  tags: string[];                     // Searchable tags
+  content: string;
+  summary: string;
+  category: string;
+  tags: string[];
 
   // Provenance
   sourceAgentId: string;
@@ -500,241 +682,29 @@ interface KnowledgeEntry {
   extractedAt: Date;
 
   // Quality metrics
-  confidence: number;                 // 0-1 agent confidence
-  relevance: number;                  // 0-1 relevance to main topic
-  novelty: number;                    // 0-1 how new vs existing knowledge
+  confidence: number;    // 0-1
+  relevance: number;     // 0-1
+  novelty: number;       // 0-1
 
   // Relationships
-  relatedEntries: string[];           // Links to related findings
-  contradicts: string[];              // Links to contradicting findings
-  supports: string[];                 // Links to supporting findings
+  relatedEntries: string[];
+  contradicts: string[];
+  supports: string[];
 
   // Versioning
   version: number;
   previousVersionId?: string;
-  mergedFrom?: string[];              // If created by merging entries
+  mergedFrom?: string[];
 }
 
 interface SourceReference {
   url: string;
   title: string;
-  excerpt: string;                    // Relevant quote
+  excerpt: string;
   accessedAt: Date;
-  reliability: number;                // 0-1 source reliability estimate
-}
-
-interface AgentKnowledge {
-  agentId: string;
-  sessionId: string;
-  assignedSubtopic: string;
-
-  entries: KnowledgeEntry[];
-  searchHistory: SearchLogEntry[];
-  reasoningLog: ReasoningStep[];
-
-  stats: {
-    totalSearches: number;
-    totalSources: number;
-    totalFindings: number;
-    avgConfidence: number;
-  };
-}
-
-interface CombinedKnowledge {
-  sessionId: string;
-  iteration: number;
-
-  entries: KnowledgeEntry[];          // Merged and deduplicated
-
-  // Synthesis helpers
-  keyThemes: Theme[];
-  contradictions: Contradiction[];
-  gaps: KnowledgeGap[];
-
-  // Metrics
-  overallConfidence: number;
-  coverageBySubtopic: Map<string, number>;
-
-  updatedAt: Date;
-}
-
-interface Theme {
-  id: string;
-  title: string;
-  description: string;
-  supportingEntries: string[];
-  strength: number;                   // How well-supported
-}
-
-interface Contradiction {
-  id: string;
-  description: string;
-  entries: string[];                  // Conflicting entry IDs
-  resolved: boolean;
-  resolution?: string;
-}
-
-interface KnowledgeGap {
-  id: string;
-  subtopic: string;
-  description: string;
-  priority: 'high' | 'medium' | 'low';
-  suggestedQueries: string[];
+  reliability: number;
 }
 ```
-
-### Knowledge Operations
-
-```typescript
-interface KnowledgeStore {
-  // Agent operations
-  addEntry(agentId: string, entry: KnowledgeEntry): Promise<void>;
-  getAgentKnowledge(agentId: string): Promise<AgentKnowledge>;
-
-  // Combined operations
-  mergeAgentKnowledge(agentIds: string[]): Promise<CombinedKnowledge>;
-  getCombinedKnowledge(sessionId: string): Promise<CombinedKnowledge>;
-
-  // Query operations
-  search(query: string, filters?: KnowledgeFilters): Promise<KnowledgeEntry[]>;
-  findRelated(entryId: string): Promise<KnowledgeEntry[]>;
-  findContradictions(): Promise<Contradiction[]>;
-  identifyGaps(plan: ResearchPlan): Promise<KnowledgeGap[]>;
-
-  // Analysis
-  calculateCoverage(plan: ResearchPlan): Promise<Map<string, number>>;
-  assessNovelty(newEntry: KnowledgeEntry): Promise<number>;
-}
-```
-
----
-
-## Custom Agent Prompts
-
-Users can customize the behavior of each agent type through system prompts. Default prompts are provided but can be overridden per-session.
-
-### Prompt Configuration
-
-```typescript
-interface AgentPromptConfig {
-  // Override default system prompts
-  orchestratorPrompt?: string;
-  researcherPrompt?: string;
-  synthesizerPrompt?: string;
-
-  // Additional instructions appended to defaults
-  orchestratorInstructions?: string;
-  researcherInstructions?: string;
-  synthesizerInstructions?: string;
-
-  // Research focus/style
-  researchStyle?: 'academic' | 'journalistic' | 'technical' | 'general';
-  outputTone?: 'formal' | 'casual' | 'technical';
-
-  // Domain-specific context
-  domainContext?: string;            // e.g., "This research is for a medical professional"
-  priorKnowledge?: string;           // What user already knows
-
-  // Constraints
-  avoidTopics?: string[];
-  requiredSources?: string[];        // Domains to prioritize
-  excludedSources?: string[];        // Domains to avoid
-}
-```
-
-### Default Prompt Templates
-
-```typescript
-const DEFAULT_PROMPTS = {
-  orchestrator: `
-You are a Research Orchestrator managing a deep research session.
-
-Your responsibilities:
-1. Analyze the research topic and create a comprehensive plan
-2. Break down the topic into subtopics for parallel research
-3. Assign tasks to researcher agents
-4. Evaluate incoming findings for quality and relevance
-5. Identify gaps, contradictions, and areas needing clarification
-6. Decide when research is sufficient to synthesize
-7. Coordinate the final synthesis
-
-Decision guidelines:
-- Request clarification when findings are ambiguous
-- Expand research when coverage is insufficient
-- Stop when confidence threshold is met or saturation is reached
-- Always consider user feedback in your decisions
-
-Current session context:
-{sessionContext}
-
-User's custom instructions:
-{customInstructions}
-`,
-
-  researcher: `
-You are a Research Agent conducting focused investigation on a specific subtopic.
-
-Your responsibilities:
-1. Execute targeted web searches based on your assigned queries
-2. Analyze search results and extract relevant information
-3. Assess source credibility and assign confidence scores
-4. Identify key findings and supporting evidence
-5. Note contradictions or gaps in available information
-6. Suggest follow-up queries for deeper investigation
-
-Research guidelines:
-- Prioritize authoritative and recent sources
-- Cross-reference claims across multiple sources
-- Clearly distinguish facts from opinions
-- Note uncertainty when information is conflicting
-
-Your assigned subtopic: {subtopic}
-Search queries to execute: {searchQueries}
-
-User's custom instructions:
-{customInstructions}
-`,
-
-  synthesizer: `
-You are a Research Synthesizer creating comprehensive summaries from collected findings.
-
-Your responsibilities:
-1. Aggregate findings from all research agents
-2. Identify overarching themes and patterns
-3. Resolve or highlight contradictions
-4. Create a coherent narrative from disparate sources
-5. Ensure all claims are properly attributed
-6. Generate structured output with clear sections
-
-Synthesis guidelines:
-- Lead with the most important findings
-- Group related information logically
-- Maintain source attribution throughout
-- Indicate confidence levels for conclusions
-- Highlight areas of uncertainty or debate
-
-Output style: {outputStyle}
-
-User's custom instructions:
-{customInstructions}
-`
-};
-```
-
-### Prompt Variables
-
-Available variables that get injected into prompts:
-
-| Variable | Description |
-|----------|-------------|
-| `{sessionContext}` | Current session state, topic, iteration count |
-| `{customInstructions}` | User-provided additional instructions |
-| `{subtopic}` | Assigned subtopic for researcher |
-| `{searchQueries}` | List of queries to execute |
-| `{outputStyle}` | User's preferred output format |
-| `{knowledgeSummary}` | Summary of current knowledge base |
-| `{previousFindings}` | Findings from previous iterations |
-| `{userFeedback}` | Latest user feedback if any |
 
 ---
 
@@ -743,6 +713,7 @@ Available variables that get injected into prompts:
 ### Research Session
 
 ```typescript
+// src/types/research.ts
 interface ResearchSession {
   id: string;
   topic: string;
@@ -750,23 +721,12 @@ interface ResearchSession {
 
   // Configuration
   config: ResearchConfig;
-  promptConfig: AgentPromptConfig;
+  promptConfig?: AgentPromptConfig;
   exitCriteria: LoopExitCriteria;
 
   // State
   currentIteration: number;
   plan?: ResearchPlan;
-  agents: AgentState[];
-
-  // Knowledge
-  combinedKnowledge?: CombinedKnowledge;
-
-  // Outputs
-  syntheses: Synthesis[];             // One per iteration
-  finalSynthesis?: Synthesis;
-
-  // User interaction
-  feedbackHistory: UserFeedback[];
 
   // Timing
   createdAt: Date;
@@ -781,15 +741,6 @@ interface ResearchConfig {
   focusAreas?: string[];
   excludeTopics?: string[];
 }
-
-interface UserFeedback {
-  id: string;
-  iteration: number;
-  timestamp: Date;
-  type: 'guidance' | 'approval' | 'stop' | 'redirect';
-  content: string;
-  processed: boolean;
-}
 ```
 
 ### Research Plan
@@ -803,27 +754,9 @@ interface ResearchPlan {
     description: string;
     searchQueries: string[];
     assignedAgent?: string;
+    status: 'pending' | 'in_progress' | 'completed';
   }[];
   strategy: string;
-}
-```
-
-### Finding
-
-```typescript
-interface Finding {
-  id: string;
-  agentId: string;
-  content: string;
-  sources: {
-    url: string;
-    title: string;
-    snippet: string;
-    relevanceScore: number;
-  }[];
-  confidence: number;
-  category: string;
-  timestamp: Date;
 }
 ```
 
@@ -831,6 +764,11 @@ interface Finding {
 
 ```typescript
 interface Synthesis {
+  id: string;
+  sessionId: string;
+  iteration: number;
+  isFinal: boolean;
+
   summary: string;
   keyFindings: {
     title: string;
@@ -843,573 +781,186 @@ interface Synthesis {
     content: string;
     sources: string[];
   }[];
+
+  confidence: number;
   generatedAt: Date;
 }
 ```
 
 ---
 
-## UX Flow
+## Database Schema (Drizzle)
 
-### Complete User Journey
+```typescript
+// src/db/schema.ts
+import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              USER JOURNEY                                    │
-└─────────────────────────────────────────────────────────────────────────────┘
+export const researchSessions = sqliteTable('research_sessions', {
+  id: text('id').primaryKey(),
+  topic: text('topic').notNull(),
+  status: text('status').notNull(),
+  currentIteration: integer('current_iteration').default(0),
+  config: text('config', { mode: 'json' }).notNull(),
+  promptConfig: text('prompt_config', { mode: 'json' }),
+  exitCriteria: text('exit_criteria', { mode: 'json' }),
+  plan: text('plan', { mode: 'json' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).defaultNow(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).defaultNow(),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+});
 
-1. LANDING / HOME
-   │
-   │  User sees:
-   │  • New research button
-   │  • Recent sessions list
-   │  • Settings access
-   │
-   └──→ Click "New Research"
-           │
-           ▼
-2. RESEARCH SETUP
-   │
-   │  User configures:
-   │  ┌─────────────────────────────────────────────────────────────┐
-   │  │ [Required]                                                  │
-   │  │ • Topic input (text field)                                  │
-   │  │                                                             │
-   │  │ [Optional - Expandable "Advanced Settings"]                 │
-   │  │ • Depth: Shallow / Medium / Deep (radio)                    │
-   │  │ • Focus areas (tag input)                                   │
-   │  │ • Exclude topics (tag input)                                │
-   │  │ • Max iterations (slider, 1-20)                             │
-   │  │ • Custom agent prompts (collapsible text areas)             │
-   │  │   - Orchestrator instructions                               │
-   │  │   - Researcher instructions                                 │
-   │  │   - Synthesizer instructions                                │
-   │  └─────────────────────────────────────────────────────────────┘
-   │
-   └──→ Click "Start Research"
-           │
-           ▼
-3. RESEARCH IN PROGRESS (Main Loop)
-   │
-   │  ┌─────────────────────────────────────────────────────────────┐
-   │  │                    RESEARCH VIEW                            │
-   │  │                                                             │
-   │  │  ┌─────────────────┬───────────────────────────────────┐   │
-   │  │  │  LEFT PANEL     │  MAIN CONTENT                     │   │
-   │  │  │                 │                                    │   │
-   │  │  │  Agent Status   │  Current Synthesis                │   │
-   │  │  │  ┌───────────┐  │  (updates live)                   │   │
-   │  │  │  │ Agent 1   │  │                                    │   │
-   │  │  │  │ ████░░ 60%│  │  Key Findings So Far:             │   │
-   │  │  │  ├───────────┤  │  • Finding 1...                   │   │
-   │  │  │  │ Agent 2   │  │  • Finding 2...                   │   │
-   │  │  │  │ ██████ 90%│  │                                    │   │
-   │  │  │  ├───────────┤  │  ─────────────────────────────    │   │
-   │  │  │  │ Agent 3   │  │                                    │   │
-   │  │  │  │ ██░░░░ 30%│  │  Detailed Sections:               │   │
-   │  │  │  └───────────┘  │  [Expandable sections...]         │   │
-   │  │  │                 │                                    │   │
-   │  │  │  Iteration: 2/10│                                    │   │
-   │  │  │                 │                                    │   │
-   │  │  │  [View Details] │                                    │   │
-   │  │  └─────────────────┴───────────────────────────────────┘   │
-   │  │                                                             │
-   │  │  ┌─────────────────────────────────────────────────────┐   │
-   │  │  │  FEEDBACK BAR                                       │   │
-   │  │  │  ┌───────────────────────────────────────────────┐  │   │
-   │  │  │  │ [Text input: "Go deeper on...", "Ignore..."] │  │   │
-   │  │  │  └───────────────────────────────────────────────┘  │   │
-   │  │  │  [Send Feedback]  [Looks Good, Continue]  [Finish] │   │
-   │  │  └─────────────────────────────────────────────────────┘   │
-   │  └─────────────────────────────────────────────────────────────┘
-   │
-   │  Loop behaviors:
-   │  • Synthesis updates after each agent reports
-   │  • User can send feedback anytime (non-blocking)
-   │  • "Finish" triggers final synthesis
-   │  • Auto-proceeds if no feedback within timeout
-   │
-   └──→ Research completes (auto or manual)
-           │
-           ▼
-4. RESULTS VIEW
-   │
-   │  ┌─────────────────────────────────────────────────────────────┐
-   │  │                    FINAL RESULTS                            │
-   │  │                                                             │
-   │  │  Topic: "Your Research Topic"                              │
-   │  │  Completed: 2024-01-15 14:30 | Iterations: 5 | Sources: 47 │
-   │  │                                                             │
-   │  │  ┌─────────────────────────────────────────────────────┐   │
-   │  │  │  EXECUTIVE SUMMARY                                  │   │
-   │  │  │  [Collapsible full summary text...]                 │   │
-   │  │  └─────────────────────────────────────────────────────┘   │
-   │  │                                                             │
-   │  │  ┌─────────────────────────────────────────────────────┐   │
-   │  │  │  KEY FINDINGS                                       │   │
-   │  │  │  ⭐ High: Finding title [2 sources]                 │   │
-   │  │  │  ⭐ High: Finding title [3 sources]                 │   │
-   │  │  │  ◆ Medium: Finding title [1 source]                 │   │
-   │  │  └─────────────────────────────────────────────────────┘   │
-   │  │                                                             │
-   │  │  ┌─────────────────────────────────────────────────────┐   │
-   │  │  │  DETAILED SECTIONS (tabs or accordion)              │   │
-   │  │  │  [Section 1] [Section 2] [Section 3] ...            │   │
-   │  │  └─────────────────────────────────────────────────────┘   │
-   │  │                                                             │
-   │  │  ┌─────────────────────────────────────────────────────┐   │
-   │  │  │  SOURCES                                            │   │
-   │  │  │  • source1.com - "Title" (cited 5x)                 │   │
-   │  │  │  • source2.org - "Title" (cited 3x)                 │   │
-   │  │  └─────────────────────────────────────────────────────┘   │
-   │  │                                                             │
-   │  │  [Export: Markdown] [Export: PDF] [Continue Research]      │
-   │  └─────────────────────────────────────────────────────────────┘
-   │
-   └──→ User can:
-        • Export results
-        • Continue research (returns to loop)
-        • Start new research
-        • Go to history
-```
+export const agents = sqliteTable('agents', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').references(() => researchSessions.id),
+  role: text('role').notNull(),
+  status: text('status').notNull(),
+  assignedSubtopic: text('assigned_subtopic'),
+  customPrompt: text('custom_prompt'),
+  startedAt: integer('started_at', { mode: 'timestamp' }),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+});
 
-### Interaction Patterns
+export const knowledgeEntries = sqliteTable('knowledge_entries', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').references(() => researchSessions.id),
+  agentId: text('agent_id').references(() => agents.id),
+  iteration: integer('iteration').notNull(),
 
-| Action | Trigger | System Response |
-|--------|---------|-----------------|
-| Start Research | Click "Start" | Create session, show research view |
-| Send Feedback | Type + click "Send" | Queue feedback, continue research |
-| Quick Approve | Click "Looks Good" | Log approval, continue to next iteration |
-| Finish Early | Click "Finish" | Trigger final synthesis immediately |
-| Expand Agent | Click agent card | Show agent's findings, search history |
-| View Source | Click source link | Open in new tab |
-| Export | Click export button | Generate and download file |
-| Continue Research | Click from results | Resume loop with existing knowledge |
+  content: text('content').notNull(),
+  summary: text('summary'),
+  category: text('category'),
+  tags: text('tags', { mode: 'json' }),
 
-### Feedback Types and Effects
+  confidence: real('confidence'),
+  relevance: real('relevance'),
+  novelty: real('novelty'),
 
-| Feedback Type | Example | Orchestrator Action |
-|--------------|---------|---------------------|
-| Redirect | "Focus more on X" | Reprioritize subtopics, spawn new agent for X |
-| Expand | "Go deeper on Y" | Assign expansion task to agent |
-| Exclude | "Ignore Z" | Mark Z as excluded, filter from synthesis |
-| Clarify | "What about W?" | Add W as new subtopic |
-| Approve | "This looks good" | Continue with current direction |
-| Complete | "This is enough" | Exit loop, final synthesis |
+  relatedEntries: text('related_entries', { mode: 'json' }),
+  contradicts: text('contradicts', { mode: 'json' }),
+  supports: text('supports', { mode: 'json' }),
 
----
+  version: integer('version').default(1),
+  previousVersionId: text('previous_version_id'),
+  mergedFrom: text('merged_from', { mode: 'json' }),
 
-## UI Description
+  createdAt: integer('created_at', { mode: 'timestamp' }).defaultNow(),
+});
 
-### Layout Overview
+export const sources = sqliteTable('sources', {
+  id: text('id').primaryKey(),
+  entryId: text('entry_id').references(() => knowledgeEntries.id),
+  url: text('url').notNull(),
+  title: text('title'),
+  excerpt: text('excerpt'),
+  fullContent: text('full_content'),
+  reliability: real('reliability'),
+  accessedAt: integer('accessed_at', { mode: 'timestamp' }),
+  publishedAt: integer('published_at', { mode: 'timestamp' }),
+});
 
-Single-page application with responsive design. Three main views:
+export const syntheses = sqliteTable('syntheses', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').references(() => researchSessions.id),
+  iteration: integer('iteration'),
+  isFinal: integer('is_final', { mode: 'boolean' }).default(false),
+  summary: text('summary').notNull(),
+  keyFindings: text('key_findings', { mode: 'json' }).notNull(),
+  sections: text('sections', { mode: 'json' }).notNull(),
+  confidence: real('confidence'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).defaultNow(),
+});
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  HEADER                                                                      │
-│  ┌─────────────────────────────────────────────────────────────────────────┐│
-│  │ [Logo] Deep Search          [History] [Settings] [Theme Toggle]         ││
-│  └─────────────────────────────────────────────────────────────────────────┘│
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  MAIN CONTENT AREA                                                          │
-│  (changes based on current view)                                            │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+export const userFeedback = sqliteTable('user_feedback', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').references(() => researchSessions.id),
+  iteration: integer('iteration').notNull(),
+  type: text('type').notNull(),
+  content: text('content').notNull(),
+  processed: integer('processed', { mode: 'boolean' }).default(false),
+  processedAt: integer('processed_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).defaultNow(),
+});
 
-### View Components
+export const knowledgeGaps = sqliteTable('knowledge_gaps', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').references(() => researchSessions.id),
+  iteration: integer('iteration').notNull(),
+  subtopic: text('subtopic'),
+  description: text('description').notNull(),
+  priority: text('priority'),
+  suggestedQueries: text('suggested_queries', { mode: 'json' }),
+  resolved: integer('resolved', { mode: 'boolean' }).default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).defaultNow(),
+});
 
-#### 1. Home View
-- **New Research Card**: Prominent CTA, topic input with "Start" button
-- **Recent Sessions**: List of last 5-10 sessions with status badges
-- **Quick Stats**: Total sessions, average research time, etc.
-
-#### 2. Research Setup View
-- **Topic Input**: Large text field with placeholder examples
-- **Advanced Settings**: Collapsible panel with:
-  - Depth selector (3 radio buttons with descriptions)
-  - Focus areas (tag input with autocomplete)
-  - Exclusions (tag input)
-  - Iteration limit (slider)
-- **Custom Prompts**: Collapsible section with three text areas
-- **Action Buttons**: "Start Research", "Cancel"
-
-#### 3. Research View (Active Session)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Topic: "Understanding quantum computing applications"        Iteration 3/10 │
-├────────────────────┬────────────────────────────────────────────────────────┤
-│                    │                                                        │
-│  AGENT PANEL       │  SYNTHESIS PANEL                                      │
-│  (240px width)     │  (flexible)                                           │
-│                    │                                                        │
-│  ┌──────────────┐  │  ┌──────────────────────────────────────────────────┐ │
-│  │ Orchestrator │  │  │ Current Understanding                            │ │
-│  │ Planning...  │  │  │                                                  │ │
-│  └──────────────┘  │  │ [Live-updating markdown content with            │ │
-│                    │  │  key findings, sections, and source             │ │
-│  ┌──────────────┐  │  │  citations. Streaming text appearance.]         │ │
-│  │ Researcher 1 │  │  │                                                  │ │
-│  │ ████████░░   │  │  │                                                  │ │
-│  │ Searching... │  │  │                                                  │ │
-│  └──────────────┘  │  │                                                  │ │
-│                    │  │                                                  │ │
-│  ┌──────────────┐  │  │                                                  │ │
-│  │ Researcher 2 │  │  │                                                  │ │
-│  │ ██████████   │  │  │                                                  │ │
-│  │ Complete ✓   │  │  └──────────────────────────────────────────────────┘ │
-│  └──────────────┘  │                                                        │
-│                    │  ┌──────────────────────────────────────────────────┐ │
-│  ┌──────────────┐  │  │ Knowledge Progress                               │ │
-│  │ Researcher 3 │  │  │ ████████████████░░░░░░░░ 67% coverage           │ │
-│  │ ████░░░░░░   │  │  │ 23 findings | 12 sources | 2 gaps identified    │ │
-│  │ Analyzing... │  │  └──────────────────────────────────────────────────┘ │
-│  └──────────────┘  │                                                        │
-│                    │                                                        │
-├────────────────────┴────────────────────────────────────────────────────────┤
-│  FEEDBACK BAR                                                               │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │ [Feedback input...                                          ] [Send]  │ │
-│  │                                                                        │ │
-│  │ [👍 Continue]    [🎯 Go Deeper]    [✅ Finish Now]                     │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Agent Panel Components:**
-- Agent cards with role icon, status, progress bar
-- Click to expand showing: current task, recent findings, search history
-- Color-coded status: blue (working), green (complete), yellow (waiting), red (error)
-
-**Synthesis Panel Components:**
-- Markdown rendered content with source citations as superscript links
-- Collapsible sections for detailed findings
-- "Scroll to latest" button when auto-scrolling is paused
-
-**Feedback Bar Components:**
-- Text input for free-form guidance
-- Quick action buttons with icons
-- Subtle feedback history indicator (click to see past feedback)
-
-#### 4. Results View
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Research Complete                                              [Export ▼]  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Topic: "Understanding quantum computing applications"                       │
-│  Completed: Jan 15, 2024 at 2:30 PM | 5 iterations | 47 sources             │
-│                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────────┐│
-│  │ SUMMARY                                                                 ││
-│  │                                                                         ││
-│  │ [Executive summary paragraph with key takeaways...]                     ││
-│  │                                                                         ││
-│  └─────────────────────────────────────────────────────────────────────────┘│
-│                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────────┐│
-│  │ KEY FINDINGS                                                            ││
-│  │                                                                         ││
-│  │ ⭐ High Impact                                                          ││
-│  │    • Finding 1 with source citation [1][2]                              ││
-│  │    • Finding 2 with source citation [3]                                 ││
-│  │                                                                         ││
-│  │ ◆ Notable                                                               ││
-│  │    • Finding 3 with source citation [4]                                 ││
-│  └─────────────────────────────────────────────────────────────────────────┘│
-│                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────────┐│
-│  │ [Section 1] [Section 2] [Section 3] [Sources]                          ││
-│  ├─────────────────────────────────────────────────────────────────────────┤│
-│  │                                                                         ││
-│  │ Section content with proper formatting, citations, and                  ││
-│  │ expandable details...                                                   ││
-│  │                                                                         ││
-│  └─────────────────────────────────────────────────────────────────────────┘│
-│                                                                              │
-│  [Continue Research]  [New Research]                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### 5. History View
-
-- Session list with search/filter
-- Each item shows: topic, date, status, iteration count
-- Click to open results view
-- Bulk actions: delete, export
-
-#### 6. Settings View
-
-- **LLM Configuration**: Provider, URL, model, API key
-- **Search Configuration**: Provider selection, SearXNG URL
-- **Default Research Settings**: Default depth, max iterations
-- **Default Prompts**: Edit default prompts for all agents
-- **Theme**: Light/Dark mode toggle
-
-### Component Library (shadcn/ui)
-
-Required components:
-- `Button`, `Input`, `Textarea` - Forms
-- `Card`, `CardHeader`, `CardContent` - Layout
-- `Progress` - Agent progress bars
-- `Badge` - Status indicators
-- `Tabs`, `TabsList`, `TabsContent` - Section navigation
-- `Collapsible` - Expandable sections
-- `Dialog` - Modals for settings, confirmations
-- `Tooltip` - Help text
-- `Skeleton` - Loading states
-- `Toast` - Notifications
-
-### Responsive Behavior
-
-| Breakpoint | Layout Change |
-|------------|---------------|
-| Desktop (>1024px) | Two-column layout, full agent panel |
-| Tablet (768-1024px) | Collapsible agent panel, full synthesis |
-| Mobile (<768px) | Stacked layout, bottom sheet for agents |
-
----
-
-## API Endpoints
-
-### REST API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| **Sessions** |
-| POST | `/api/research/sessions` | Start new research session |
-| GET | `/api/research/sessions` | List all sessions |
-| GET | `/api/research/sessions/:id` | Get session details |
-| DELETE | `/api/research/sessions/:id` | Cancel/delete session |
-| POST | `/api/research/sessions/:id/resume` | Resume a paused session |
-| **Feedback & Control** |
-| POST | `/api/research/sessions/:id/feedback` | Submit user feedback |
-| POST | `/api/research/sessions/:id/finish` | Request immediate completion |
-| POST | `/api/research/sessions/:id/pause` | Pause research loop |
-| **Knowledge** |
-| GET | `/api/research/sessions/:id/knowledge` | Get combined knowledge base |
-| GET | `/api/research/sessions/:id/knowledge/entries` | Get all knowledge entries |
-| GET | `/api/research/sessions/:id/knowledge/gaps` | Get identified gaps |
-| GET | `/api/research/sessions/:id/agents/:agentId/knowledge` | Get agent's knowledge |
-| **Results** |
-| GET | `/api/research/sessions/:id/synthesis` | Get current/final synthesis |
-| GET | `/api/research/sessions/:id/synthesis/history` | Get all iteration syntheses |
-| GET | `/api/research/sessions/:id/sources` | Get all sources |
-| GET | `/api/research/sessions/:id/export` | Export results (format query param) |
-| **Configuration** |
-| GET | `/api/config/prompts/defaults` | Get default agent prompts |
-| PUT | `/api/config/prompts/defaults` | Update default prompts |
-| GET | `/api/config/settings` | Get app settings |
-| PUT | `/api/config/settings` | Update app settings |
-
-### WebSocket Events
-
-**Client → Server:**
-- `join_session` - Subscribe to session updates
-- `leave_session` - Unsubscribe from session
-- `send_feedback` - Submit feedback (alternative to REST)
-- `request_finish` - Request immediate completion
-
-**Server → Client:**
-- `session_status` - Session status changed
-- `iteration_started` - New research iteration beginning
-- `iteration_complete` - Iteration finished, awaiting feedback
-- `plan_created` - Research plan ready
-- `plan_updated` - Plan modified based on feedback
-- `agent_spawned` - New agent started
-- `agent_status` - Agent status update
-- `agent_progress` - Agent progress percentage
-- `finding_added` - New finding discovered
-- `knowledge_updated` - Knowledge base changed
-- `synthesis_started` - Synthesis beginning
-- `synthesis_chunk` - Streaming synthesis content
-- `synthesis_complete` - Synthesis finished
-- `feedback_processed` - User feedback acknowledged
-- `research_complete` - Final results ready
-- `error` - Error occurred
-
----
-
-## Database Schema
-
-```sql
--- Sessions
-CREATE TABLE research_sessions (
-  id TEXT PRIMARY KEY,
-  topic TEXT NOT NULL,
-  status TEXT NOT NULL,
-  current_iteration INTEGER DEFAULT 0,
-  config JSON NOT NULL,
-  prompt_config JSON,
-  exit_criteria JSON,
-  plan JSON,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  completed_at DATETIME
-);
-
--- Agents
-CREATE TABLE agents (
-  id TEXT PRIMARY KEY,
-  session_id TEXT REFERENCES research_sessions(id),
-  role TEXT NOT NULL,
-  status TEXT NOT NULL,
-  assigned_subtopic TEXT,
-  custom_prompt TEXT,
-  started_at DATETIME,
-  completed_at DATETIME
-);
-
--- Knowledge Entries (unified knowledge storage)
-CREATE TABLE knowledge_entries (
-  id TEXT PRIMARY KEY,
-  session_id TEXT REFERENCES research_sessions(id),
-  agent_id TEXT REFERENCES agents(id),
-  iteration INTEGER NOT NULL,
-
-  -- Content
-  content TEXT NOT NULL,
-  summary TEXT,
-  category TEXT,
-  tags JSON,
-
-  -- Quality metrics
-  confidence REAL,
-  relevance REAL,
-  novelty REAL,
-
-  -- Relationships (JSON arrays of entry IDs)
-  related_entries JSON,
-  contradicts JSON,
-  supports JSON,
-
-  -- Versioning
-  version INTEGER DEFAULT 1,
-  previous_version_id TEXT,
-  merged_from JSON,
-
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Sources (linked to knowledge entries)
-CREATE TABLE sources (
-  id TEXT PRIMARY KEY,
-  entry_id TEXT REFERENCES knowledge_entries(id),
-  url TEXT NOT NULL,
-  title TEXT,
-  excerpt TEXT,
-  full_content TEXT,
-  reliability REAL,
-  accessed_at DATETIME,
-  published_at DATETIME
-);
-
--- Synthesis (one per iteration + final)
-CREATE TABLE syntheses (
-  id TEXT PRIMARY KEY,
-  session_id TEXT REFERENCES research_sessions(id),
-  iteration INTEGER,
-  is_final BOOLEAN DEFAULT FALSE,
-  summary TEXT NOT NULL,
-  key_findings JSON NOT NULL,
-  sections JSON NOT NULL,
-  confidence REAL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- User Feedback
-CREATE TABLE user_feedback (
-  id TEXT PRIMARY KEY,
-  session_id TEXT REFERENCES research_sessions(id),
-  iteration INTEGER NOT NULL,
-  type TEXT NOT NULL,  -- 'guidance', 'approval', 'stop', 'redirect'
-  content TEXT NOT NULL,
-  processed BOOLEAN DEFAULT FALSE,
-  processed_at DATETIME,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Knowledge Gaps (identified by orchestrator)
-CREATE TABLE knowledge_gaps (
-  id TEXT PRIMARY KEY,
-  session_id TEXT REFERENCES research_sessions(id),
-  iteration INTEGER NOT NULL,
-  subtopic TEXT,
-  description TEXT NOT NULL,
-  priority TEXT,  -- 'high', 'medium', 'low'
-  suggested_queries JSON,
-  resolved BOOLEAN DEFAULT FALSE,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Agent Messages (for debugging/audit)
-CREATE TABLE agent_messages (
-  id TEXT PRIMARY KEY,
-  session_id TEXT REFERENCES research_sessions(id),
-  iteration INTEGER,
-  from_agent TEXT,
-  to_agent TEXT,
-  type TEXT NOT NULL,
-  payload JSON,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Saved Prompts (user customizations)
-CREATE TABLE saved_prompts (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  agent_type TEXT NOT NULL,  -- 'orchestrator', 'researcher', 'synthesizer'
-  prompt_text TEXT NOT NULL,
-  is_default BOOLEAN DEFAULT FALSE,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Indexes for performance
-CREATE INDEX idx_knowledge_session ON knowledge_entries(session_id);
-CREATE INDEX idx_knowledge_agent ON knowledge_entries(agent_id);
-CREATE INDEX idx_knowledge_iteration ON knowledge_entries(session_id, iteration);
-CREATE INDEX idx_sources_entry ON sources(entry_id);
-CREATE INDEX idx_feedback_session ON user_feedback(session_id);
-CREATE INDEX idx_gaps_session ON knowledge_gaps(session_id);
+export const savedPrompts = sqliteTable('saved_prompts', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  agentType: text('agent_type').notNull(),
+  promptText: text('prompt_text').notNull(),
+  isDefault: integer('is_default', { mode: 'boolean' }).default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).defaultNow(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).defaultNow(),
+});
 ```
 
 ---
 
-## Configuration
+## API Routes Summary
 
-### Environment Variables
+### tRPC Procedures (Type-Safe Queries)
+
+| Procedure | Type | Description |
+|-----------|------|-------------|
+| `sessions.list` | Query | List all research sessions |
+| `sessions.get` | Query | Get session with agents & syntheses |
+| `sessions.getKnowledge` | Query | Get combined knowledge base |
+| `sessions.getGaps` | Query | Get identified knowledge gaps |
+| `settings.get` | Query | Get app settings |
+| `settings.update` | Mutation | Update settings |
+
+### Server Functions (Mutations)
+
+| Function | Description |
+|----------|-------------|
+| `createSession` | Start new research session |
+| `deleteSession` | Cancel/delete session |
+| `submitFeedback` | Send user feedback to orchestrator |
+| `finishSession` | Request immediate completion |
+| `pauseSession` | Pause research loop |
+| `resumeSession` | Resume paused session |
+
+### API Routes (Streaming)
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/research/sessions/$id/stream` | GET | SSE event stream |
+| `/api/research/sessions/$id/export` | GET | Export results (format param) |
+
+---
+
+## Environment Configuration
 
 ```env
-# Server
-PORT=3000
-NODE_ENV=development
+# App
+VITE_APP_TITLE="Deep Search"
 
-# Database (SQLite for local, PostgreSQL for production)
-DATABASE_URL=file:./data/deep-search.db
-# DATABASE_URL=postgresql://user:pass@localhost:5432/deep_search
+# Database (SQLite for local)
+DATABASE_URL="file:./data/deep-search.db"
+# DATABASE_URL="postgresql://user:pass@localhost:5432/deep_search"
 
-# LLM Provider (only external API dependency - optional if using local)
-LLM_PROVIDER=openai-compat  # openrouter | openai-compat
-LLM_BASE_URL=http://localhost:11434/v1  # Ollama default
-LLM_API_KEY=optional-for-local
-LLM_MODEL=llama3.2
+# LLM Provider (pick one)
+ANTHROPIC_API_KEY=your_anthropic_api_key
+# OPENAI_API_KEY=your_openai_api_key
+# OLLAMA_BASE_URL=http://localhost:11434
 
-# Web Search (self-hosted - no external APIs)
+# Web Search (self-hosted)
 SEARCH_PROVIDER=searxng  # searxng | scraper
 SEARXNG_URL=http://localhost:8080
 
-# Scraper Settings
+# Scraper Settings (when using built-in scraper)
 SCRAPER_TIMEOUT=30000
 SCRAPER_MAX_CONCURRENT=5
-SCRAPER_USER_AGENT=DeepSearch/1.0
 
 # Research Defaults
 DEFAULT_MAX_AGENTS=3
@@ -1421,11 +972,7 @@ DEFAULT_DEPTH_LEVEL=medium
 
 ## Local Deployment Options
 
-All deployments are fully self-contained with no external API dependencies (except optional cloud LLM).
-
 ### Option 1: Minimal (SQLite + Ollama + Built-in Scraper)
-
-No Docker required for search - uses built-in Playwright scraper.
 
 ```yaml
 # docker-compose.yml
@@ -1436,9 +983,8 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=file:./data/deep-search.db
-      - LLM_PROVIDER=openai-compat
-      - LLM_BASE_URL=http://host.docker.internal:11434/v1
-      - SEARCH_PROVIDER=scraper  # Built-in, no external service needed
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - SEARCH_PROVIDER=scraper
     volumes:
       - ./data:/app/data
 
@@ -1447,10 +993,7 @@ services:
 
 ### Option 2: Full Stack (SQLite + Ollama + SearXNG)
 
-Better search quality with self-hosted SearXNG meta-search.
-
 ```yaml
-# docker-compose.yml
 services:
   app:
     build: .
@@ -1458,8 +1001,7 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=file:./data/deep-search.db
-      - LLM_PROVIDER=openai-compat
-      - LLM_BASE_URL=http://host.docker.internal:11434/v1
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - SEARCH_PROVIDER=searxng
       - SEARXNG_URL=http://searxng:8080
     volumes:
@@ -1473,16 +1015,11 @@ services:
       - "8080:8080"
     volumes:
       - ./searxng:/etc/searxng
-
-# Run Ollama separately on host: ollama serve
 ```
 
-### Option 3: Production (PostgreSQL + Ollama + SearXNG + Redis)
-
-Full self-hosted production deployment.
+### Option 3: Production (PostgreSQL + SearXNG)
 
 ```yaml
-# docker-compose.yml
 services:
   app:
     build: .
@@ -1490,16 +1027,12 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/deep_search
-      - LLM_PROVIDER=openai-compat
-      - LLM_BASE_URL=http://ollama:11434/v1
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SEARCH_PROVIDER=searxng
       - SEARXNG_URL=http://searxng:8080
-      - REDIS_URL=redis://redis:6379
     depends_on:
       - db
-      - ollama
       - searxng
-      - redis
 
   db:
     image: postgres:16-alpine
@@ -1509,66 +1042,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  ollama:
-    image: ollama/ollama
-    volumes:
-      - ollama_data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: [gpu]
-
   searxng:
     image: searxng/searxng
     volumes:
       - ./searxng:/etc/searxng
 
-  redis:
-    image: redis:alpine
-    volumes:
-      - redis_data:/data
-
 volumes:
   postgres_data:
-  ollama_data:
-  redis_data:
-```
-
-### SearXNG Configuration
-
-Create `searxng/settings.yml` for optimal research results:
-
-```yaml
-general:
-  instance_name: "Deep Search"
-
-search:
-  safe_search: 0
-  default_lang: "en"
-
-engines:
-  - name: google
-    engine: google
-    disabled: false
-  - name: bing
-    engine: bing
-    disabled: false
-  - name: duckduckgo
-    engine: duckduckgo
-    disabled: false
-  - name: wikipedia
-    engine: wikipedia
-    disabled: false
-  - name: arxiv
-    engine: arxiv
-    disabled: false
-
-server:
-  secret_key: "change-this-in-production"
-
-outgoing:
-  request_timeout: 10.0
 ```
 
 ---
@@ -1576,39 +1056,52 @@ outgoing:
 ## Implementation Phases
 
 ### Phase 1: Foundation
-- [ ] Project setup with monorepo structure
-- [ ] Shared types package
-- [ ] Database setup with migrations
-- [ ] LLM provider abstraction + implementations
-- [ ] Search provider abstraction + implementations
+- [x] TanStack Start project setup
+- [x] TanStack AI integration
+- [x] Drizzle ORM + SQLite
+- [x] tRPC setup
+- [ ] Database schema migration
+- [ ] Search provider abstraction
 
 ### Phase 2: Agent System
-- [ ] Message bus implementation
+- [ ] Event bus implementation
 - [ ] Base agent class
 - [ ] Agent pool management
-- [ ] WebSocket handler for real-time updates
+- [ ] SSE streaming endpoint
 
 ### Phase 3: Deep Research Module
-- [ ] Orchestrator agent with planning logic
+- [ ] Orchestrator agent with planning
 - [ ] Researcher agent with search + analysis
-- [ ] Synthesizer agent for results compilation
-- [ ] REST API endpoints
-- [ ] Session management
+- [ ] Synthesizer agent
+- [ ] Session management service
+- [ ] Knowledge store service
 
-### Phase 4: Frontend
-- [ ] Project setup with Vite + React + Tailwind
-- [ ] shadcn/ui component installation
-- [ ] Research input and configuration UI
-- [ ] Real-time agent status display
-- [ ] Results and synthesis view
-- [ ] WebSocket integration
+### Phase 4: UI Components
+- [ ] Research setup page
+- [ ] Agent status panel
+- [ ] Real-time synthesis view
+- [ ] Feedback bar
+- [ ] Results & export view
 
 ### Phase 5: Polish
-- [ ] Error handling and recovery
+- [ ] Error handling & recovery
 - [ ] Export functionality (Markdown, PDF)
-- [ ] Session history and management
-- [ ] Configuration UI
-- [ ] Documentation
+- [ ] Session history
+- [ ] Settings UI
+
+---
+
+## Key Differences from Express Architecture
+
+| Aspect | Previous (Express) | TanStack Start |
+|--------|-------------------|----------------|
+| Structure | Monorepo (apps/backend, apps/frontend) | Single unified app |
+| API | REST endpoints | tRPC + Server Functions |
+| Real-time | WebSocket | Server-Sent Events (SSE) |
+| Data fetching | Manual fetch | TanStack Query + tRPC |
+| Type safety | Shared types package | End-to-end via tRPC |
+| State | Separate stores | TanStack Store + Query cache |
+| Deployment | Separate builds | Single Nitro deployment |
 
 ---
 
